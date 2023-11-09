@@ -14,3 +14,10 @@ ocelot = { path = "./swanky/ocelot" }
 rand = "0.8.5"
 scuttlebutt = { path = "./swanky/scuttlebutt" }
 sha2 = "0.10.8"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmark"
+harness = false
