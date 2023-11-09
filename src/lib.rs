@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{str::FromStr, ops::MulAssign};
 
 use ff::Field;
 use lazy_static::lazy_static;
@@ -11,9 +11,14 @@ extern crate ff;
 use crate::ff::PrimeField;
 
 /// TODO: Check whether ff or ff_ce has this method already and if not, contribute it.
-fn fr_from_256bit(from: &[u64; 4]) -> Result<Fr, anyhow::Error> {
-    let x = Fr::from(from[0]);
+fn fr_from_256bit(from: &[u64; 4]) -> Fr {
+    Fr::from(from[0]) +
+    Fr::from(from[1]) * *TWO_64 +
+    Fr::from(from[2]) * *TWO_128 +
+    Fr::from(from[3]) * *TWO_192
 }
+
+
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617"]
 #[PrimeFieldGenerator = "7"]
@@ -24,9 +29,11 @@ pub struct Fr([u64; 4]);
 lazy_static! {
     pub static ref FIELD_MODULUS: BigUint = BigUint::from_str("21888242871839275222246405745257275088548364400416034343698204186575808495617").unwrap();
     /// 2^64
-    pub static ref TWO_64: BigUint = Fr::from_str("18446744073709551616").unwrap();
-    /// 2^64
-    pub static ref TWO_128: BigUint = Fr::from_str("18446744073709551616").unwrap();
+    pub static ref TWO_64: Fr = Fr::from_str_vartime("18446744073709551616").unwrap();
+    /// 2^128
+    pub static ref TWO_128: Fr = Fr::from_str_vartime("340282366920938463463374607431768211456").unwrap();
+    /// 2^192
+    pub static ref TWO_192: Fr = Fr::from_str_vartime("6277101735386680763835789423207666416102355444464034512896").unwrap();
 }
 /// U128 representation of 21888242871839275222246405745257275088548364400416034343698204186575808495617
 const MODULUS_AS_U64s: [u64; 4] = [
@@ -36,9 +43,16 @@ const MODULUS_AS_U64s: [u64; 4] = [
     0x43E1F593F0000001
 ];
 
-/// Used for rejection sampling
-fn u128s_overflow_field(x: &[u128; 2]) -> bool {
-    x[0] > MODULUS_AS_U128s[0] || (x[0] == MODULUS_AS_U128s[0] && x[1] >= MODULUS_AS_U128s[1])
+// /// Used for rejection sampling
+// fn u128s_overflow_field(x: &[u128; 2]) -> bool {
+//     x[0] > MODULUS_AS_U128s[0] || (x[0] == MODULUS_AS_U128s[0] && x[1] >= MODULUS_AS_U128s[1])
+// }
+
+fn u64s_overflow_field(x: &[u64; 4]) -> bool {
+       (x[0] > MODULUS_AS_U64s[0])
+    || (x[0] == MODULUS_AS_U64s[0] && x[1] > MODULUS_AS_U64s[1])
+    || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] > MODULUS_AS_U64s[2]) 
+    || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] == MODULUS_AS_U64s[2] && x[3] >= MODULUS_AS_U64s[3])
 }
 // /// Generates 2^log_length Fr elements. 2^long_length means it can be put into a binary merkle tree
 // pub fn rand_fr_vec(log_len: u32) -> Vec<Fr> {
@@ -76,18 +90,31 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Vec<u8>> {
     // Collect the children as a Vec<Fr> using rejection sampling
     recent_lvl.iter().map(|x| {
         let mut b = x.clone();
-        let mut as_2u128s = [
-            u128::from_be_bytes(x[0..16].try_into().unwrap()),
-            u128::from_be_bytes(x[16..32].try_into().unwrap())
+        // let mut as_2u128s = [
+        //     u128::from_be_bytes(x[0..16].try_into().unwrap()),
+        //     u128::from_be_bytes(x[16..32].try_into().unwrap())
+        // ];
+        // b
+        // while u128s_overflow_field(&as_2u128s) {
+        let mut as_4u64s = [
+            u64::from_be_bytes(b[0..8].try_into().unwrap()),
+            u64::from_be_bytes(b[8..16].try_into().unwrap()),
+            u64::from_be_bytes(b[16..24].try_into().unwrap()),
+            u64::from_be_bytes(b[24..32].try_into().unwrap())
         ];
-        b
-        while u128s_overflow_field(&as_2u128s) {
+        while u64s_overflow_field(&as_4u64s) {
             let mut hasher = Sha512::new();
             hasher.update(b);
             b = hasher.finalize().to_vec();
-            as_2u128s = [
-                u128::from_be_bytes(b[0..16].try_into().unwrap()),
-                u128::from_be_bytes(b[16..32].try_into().unwrap())
+            // as_2u128s = [
+            //     u128::from_be_bytes(b[0..16].try_into().unwrap()),
+            //     u128::from_be_bytes(b[16..32].try_into().unwrap())
+            // ];
+            as_4u64s = [
+                u64::from_be_bytes(b[0..8].try_into().unwrap()),
+                u64::from_be_bytes(b[8..16].try_into().unwrap()),
+                u64::from_be_bytes(b[16..24].try_into().unwrap()),
+                u64::from_be_bytes(b[24..32].try_into().unwrap())
             ];
         }
         b
@@ -103,8 +130,8 @@ mod test {
         let x = Fr::from_str_vartime("21888242871839275222246405745257275088548364400416034343698204186575808495616").unwrap();
         let y = Fr::from(1);
         y.0.iter().for_each(|x| println!("{}", x));
-        let z = Fr::from(0u128);
-        println!("z: {}", z);
+        // let z = Fr::from(0u128);
+        // println!("z: {}", z);
 
     }
     
@@ -115,5 +142,18 @@ mod test {
         assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 1).len(), 2);
         assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 2).len(), 4);
         assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 10).len(), 1024);
+    }
+
+    #[test]
+    // TODO: add more edge cases
+    fn test_fr_from_512bits() {
+        // Try with modulus + 1
+        let mut x = [0u64; 4];
+        x[0] = 0x30644E72E131A029;
+        x[1] = 0xB85045B68181585D;
+        x[2] = 0x2833E84879B97091;
+        x[3] = 0x43E1F593F0000002;
+        let y = fr_from_256bit(&x);
+        assert_eq!(y, Fr::from_str_vartime("1").unwrap());
     }
 }
