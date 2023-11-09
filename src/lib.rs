@@ -10,16 +10,36 @@ extern crate ff;
 
 use crate::ff::PrimeField;
 
+/// TODO: Check whether ff or ff_ce has this method already and if not, contribute it.
+fn fr_from_256bit(from: &[u64; 4]) -> Result<Fr, anyhow::Error> {
+    let x = Fr::from(from[0]);
+}
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617"]
 #[PrimeFieldGenerator = "7"]
-#[PrimeFieldReprEndianness = "little"]
+// Important this matches the endianness of MODULUS_AS_U128s
+#[PrimeFieldReprEndianness = "big"]
 pub struct Fr([u64; 4]);
 
 lazy_static! {
     pub static ref FIELD_MODULUS: BigUint = BigUint::from_str("21888242871839275222246405745257275088548364400416034343698204186575808495617").unwrap();
+    /// 2^64
+    pub static ref TWO_64: BigUint = Fr::from_str("18446744073709551616").unwrap();
+    /// 2^64
+    pub static ref TWO_128: BigUint = Fr::from_str("18446744073709551616").unwrap();
 }
+/// U128 representation of 21888242871839275222246405745257275088548364400416034343698204186575808495617
+const MODULUS_AS_U64s: [u64; 4] = [
+    0x30644E72E131A029,
+    0xB85045B68181585D, 
+    0x2833E84879B97091,
+    0x43E1F593F0000001
+];
 
+/// Used for rejection sampling
+fn u128s_overflow_field(x: &[u128; 2]) -> bool {
+    x[0] > MODULUS_AS_U128s[0] || (x[0] == MODULUS_AS_U128s[0] && x[1] >= MODULUS_AS_U128s[1])
+}
 // /// Generates 2^log_length Fr elements. 2^long_length means it can be put into a binary merkle tree
 // pub fn rand_fr_vec(log_len: u32) -> Vec<Fr> {
 //     let len = 2usize.pow(log_len);
@@ -33,11 +53,11 @@ lazy_static! {
 
 
 /// Takes a seed and uses it to create a Vec of Fr elements. Uses rejection sampling so isn't constant time!
-/// Returns 2^log_length Fr elements
+/// Returns 2^log_length Fr elements, represented as big-endian bytes
 /// Don't be tempted to return 2x-1 as many elements by including each recent_lvl in the output. That would make some resulting elements predictable from others
 /// TODO: speed up by not converting to/from string
 /// TODO: possible speed up in browser by using crypto sha256 function in the browser rather than wasm
-pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
+pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Vec<u8>> {
     let mut recent_lvl = vec![seed];
     for i in 0..log_length {
         let mut tmp = Vec::with_capacity(2usize.pow(i));
@@ -52,18 +72,42 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
         }
         recent_lvl = tmp;
     }
-    // Collect the children as a Vec<Fr>
+
+    // Collect the children as a Vec<Fr> using rejection sampling
     recent_lvl.iter().map(|x| {
-        let mut b = BigUint::from_bytes_le(x.as_ref());
-        while b > *FIELD_MODULUS {
-            b = BigUint::from_bytes_le(blake3::hash(&b.to_bytes_le()).as_bytes());
+        let mut b = x.clone();
+        let mut as_2u128s = [
+            u128::from_be_bytes(x[0..16].try_into().unwrap()),
+            u128::from_be_bytes(x[16..32].try_into().unwrap())
+        ];
+        b
+        while u128s_overflow_field(&as_2u128s) {
+            let mut hasher = Sha512::new();
+            hasher.update(b);
+            b = hasher.finalize().to_vec();
+            as_2u128s = [
+                u128::from_be_bytes(b[0..16].try_into().unwrap()),
+                u128::from_be_bytes(b[16..32].try_into().unwrap())
+            ];
         }
-        // rejection sampling
-        Fr::from_str_vartime(&b.to_string()).unwrap()
+        b
     }).collect()
+    
 }
 #[cfg(test)]
 mod test {
+    use super::*;
+
+    #[test]
+    fn aslcjhldsa() {
+        let x = Fr::from_str_vartime("21888242871839275222246405745257275088548364400416034343698204186575808495616").unwrap();
+        let y = Fr::from(1);
+        y.0.iter().for_each(|x| println!("{}", x));
+        let z = Fr::from(0u128);
+        println!("z: {}", z);
+
+    }
+    
     #[test]
     fn test_seed_expansion_len() {
         let seed = [0u8; 32];
