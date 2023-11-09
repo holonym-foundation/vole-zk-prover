@@ -12,10 +12,10 @@ use crate::ff::PrimeField;
 
 /// TODO: Check whether ff or ff_ce has this method already and if not, contribute it.
 fn fr_from_256bit(from: &[u64; 4]) -> Fr {
-    Fr::from(from[0]) +
-    Fr::from(from[1]) * *TWO_64 +
-    Fr::from(from[2]) * *TWO_128 +
-    Fr::from(from[3]) * *TWO_192
+    Fr::from(from[3]) +
+    Fr::from(from[2]) * *TWO_64 +
+    Fr::from(from[1]) * *TWO_128 +
+    Fr::from(from[0]) * *TWO_192
 }
 
 
@@ -153,7 +153,21 @@ mod test {
         x[1] = 0xB85045B68181585D;
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000002;
-        let y = fr_from_256bit(&x);
-        assert_eq!(y, Fr::from_str_vartime("1").unwrap());
+
+        assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("1").unwrap());
+
+        x[0] = 0x30644E72E131A029;
+        x[1] = 0xB85045B68181585D;
+        x[2] = 0x2833E84879B97091;
+        x[3] = 0x43E1F593F0000001;
+
+        assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("0").unwrap());
+
+        x[0] = 0x0;
+        x[1] = 0x0;
+        x[2] = 0x0;
+        x[3] = 0x03;
+
+        assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("3").unwrap());
     }
 }
