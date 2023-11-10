@@ -1,3 +1,4 @@
+pub mod smallvole;
 pub mod vecccom;
 #[macro_use]
 extern crate ff;

@@ -6,14 +6,6 @@ use num_bigint::BigUint;
 
 use crate::Fr;
 
-/// TODO: Check whether ff or ff_ce has this method already and if not, contribute it.
-fn fr_from_256bit(from: &[u64; 4]) -> Fr {
-    Fr::from(from[3]) +
-    Fr::from(from[2]) * *TWO_64 +
-    Fr::from(from[1]) * *TWO_128 +
-    Fr::from(from[0]) * *TWO_192
-}
-
 lazy_static! {
     pub static ref FIELD_MODULUS: BigUint = BigUint::from_str("21888242871839275222246405745257275088548364400416034343698204186575808495617").unwrap();
     /// 2^64
@@ -31,17 +23,28 @@ const MODULUS_AS_U64s: [u64; 4] = [
     0x43E1F593F0000001
 ];
 
+/// Used for rejection sampling
+fn u64s_overflow_field(x: &[u64; 4]) -> bool {
+    (x[0] > MODULUS_AS_U64s[0])
+ || (x[0] == MODULUS_AS_U64s[0] && x[1] > MODULUS_AS_U64s[1])
+ || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] > MODULUS_AS_U64s[2]) 
+ || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] == MODULUS_AS_U64s[2] && x[3] >= MODULUS_AS_U64s[3])
+}
+
 // /// Used for rejection sampling
 // fn u128s_overflow_field(x: &[u128; 2]) -> bool {
 //     x[0] > MODULUS_AS_U128s[0] || (x[0] == MODULUS_AS_U128s[0] && x[1] >= MODULUS_AS_U128s[1])
 // }
 
-fn u64s_overflow_field(x: &[u64; 4]) -> bool {
-       (x[0] > MODULUS_AS_U64s[0])
-    || (x[0] == MODULUS_AS_U64s[0] && x[1] > MODULUS_AS_U64s[1])
-    || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] > MODULUS_AS_U64s[2]) 
-    || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] == MODULUS_AS_U64s[2] && x[3] >= MODULUS_AS_U64s[3])
+/// Highly efficient way of making an Fr from a big-endian u64 array representing that number
+/// TODO: Check whether ff or ff_ce has this method already and if not, contributing a more generic version.
+pub fn fr_from_be_u64slice(from: &[u64; 4]) -> Fr {
+    Fr::from(from[3]) +
+    Fr::from(from[2]) * *TWO_64 +
+    Fr::from(from[1]) * *TWO_128 +
+    Fr::from(from[0]) * *TWO_192
 }
+
 // /// Generates 2^log_length Fr elements. 2^long_length means it can be put into a binary merkle tree
 // pub fn rand_fr_vec(log_len: u32) -> Vec<Fr> {
 //     let len = 2usize.pow(log_len);
@@ -106,7 +109,7 @@ pub fn expand_seed_to_Fr_vec(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
                 u64::from_be_bytes(b[24..32].try_into().unwrap())
             ];
         }
-        fr_from_256bit(&as_4u64s)
+        fr_from_be_u64slice(&as_4u64s)
     }).collect()
 }
 
@@ -240,21 +243,21 @@ mod test {
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000002;
 
-        assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("1").unwrap());
+        assert_eq!(fr_from_be_u64slice(&x), Fr::from_str_vartime("1").unwrap());
 
         x[0] = 0x30644E72E131A029;
         x[1] = 0xB85045B68181585D;
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000001;
 
-        assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("0").unwrap());
+        assert_eq!(fr_from_be_u64slice(&x), Fr::from_str_vartime("0").unwrap());
 
         x[0] = 0x0;
         x[1] = 0x0;
         x[2] = 0x0;
         x[3] = 0x03;
 
-        assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("3").unwrap());
+        assert_eq!(fr_from_be_u64slice(&x), Fr::from_str_vartime("3").unwrap());
     }
     
     #[test]
