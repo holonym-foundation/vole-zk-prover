@@ -90,6 +90,8 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
     // Collect the children as a Vec<Fr> using rejection sampling
     recent_lvl.iter().map(|x| {
         let mut b = x.clone();
+        // Prime modulus is only 254 bits; & the largest (0th) byte with 0x3F to ensure as close as possible to the prime modulus
+        b[0] = b[0] & 0x3F;
         // let mut as_2u128s = [
         //     u128::from_be_bytes(x[0..16].try_into().unwrap()),
         //     u128::from_be_bytes(x[16..32].try_into().unwrap())
@@ -106,10 +108,13 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
             let mut hasher = Sha512::new();
             hasher.update(b);
             b = hasher.finalize().to_vec();
+            // Make it close to the 254-bit modulus
+            b[0] = b[0] & 0x3F;
             // as_2u128s = [
             //     u128::from_be_bytes(b[0..16].try_into().unwrap()),
             //     u128::from_be_bytes(b[16..32].try_into().unwrap())
             // ];
+            
             as_4u64s = [
                 u64::from_be_bytes(b[0..8].try_into().unwrap()),
                 u64::from_be_bytes(b[8..16].try_into().unwrap()),
@@ -121,19 +126,52 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
     }).collect()
     
 }
+
+/// Instead of long vectors in most VOLE protocols, we're just doing a "vector" commitment to three values,
+/// This means lambda for our SoftSpokenVOLE instantiation is 3, i.e. ∆ has just under two bits of entropy.
+/// Since we have to open and transmit all but one of the seeds, a larger lambda for SoftSpokenVOLE doesn't save significant communication and wastes computation. But anything smaller than 3 is insecure because with 2, there is a 50% chance adversary learns V
+pub fn commit_seeds(seed1: &Vec<u8>, seed2: &Vec<u8>) -> Vec<u8> {
+    let mut hasher1 = Sha512::new();
+    hasher1.update(seed1);
+    let d1 = hasher1.finalize();
+
+    let mut hasher2 = Sha512::new();
+    hasher2.update(seed2);
+    let d2 = hasher2.finalize();
+
+    let mut hasher = Sha512::new();
+    hasher.update(d1);
+    hasher.update(d2);
+    hasher.finalize().to_vec()
+}
+/// Just open one seed and hide the other since only two were committed :P. The proof an element is just the hash of the other hidden element
+pub fn proof_for_revealed_seed(other_seed: &Vec<u8>) -> Vec<u8> {
+    let mut hasher = Sha512::new();
+    hasher.update(other_seed);
+    hasher.finalize().to_vec()
+}
+
+/// Verifies a proof for a committed seed
+pub fn verify_proof_of_revealed_seed(
+    commitment: &Vec<u8>,
+    revealed_seed: &Vec<u8>, 
+    revealed_seed_idx: bool, 
+    proof: &Vec<u8>
+) -> bool {
+    let mut hasher = Sha512::new();
+    if revealed_seed_idx {
+        hasher.update(proof);
+        hasher.update(revealed_seed);
+    } else {
+        hasher.update(revealed_seed);
+        hasher.update(proof);
+    }
+    &hasher.finalize().to_vec() == commitment
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
-
-    #[test]
-    fn aslcjhldsa() {
-        let x = Fr::from_str_vartime("21888242871839275222246405745257275088548364400416034343698204186575808495616").unwrap();
-        let y = Fr::from(1);
-        y.0.iter().for_each(|x| println!("{}", x));
-        // let z = Fr::from(0u128);
-        // println!("z: {}", z);
-
-    }
     
     #[test]
     fn test_seed_expansion_len() {
