@@ -186,27 +186,20 @@ pub fn expand_seed_to_Fr_vec(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
 // }
 
 /// Instead of long vectors in most VOLE protocols, we're just doing a "vector" commitment to three values,
-/// This means lambda for our SoftSpokenVOLE instantiation is 3, i.e. ∆ has just under two bits of entropy.
-/// Since we have to open and transmit all but one of the seeds, a larger lambda for SoftSpokenVOLE doesn't save significant communication and wastes computation. But anything smaller than 3 is insecure because with 2, there is a 50% chance adversary learns V
-pub fn commit_seeds(seed1: &Vec<u8>, seed2: &Vec<u8>) -> Vec<u8> {
-    let mut hasher1 = Sha512::new();
-    hasher1.update(seed1);
-    let d1 = hasher1.finalize();
-
-    let mut hasher2 = Sha512::new();
-    hasher2.update(seed2);
-    let d2 = hasher2.finalize();
-
-    let mut hasher = Sha512::new();
-    hasher.update(d1);
-    hasher.update(d2);
-    hasher.finalize().to_vec()
+/// This means k for our SoftSpokenVOLE instantiation is 2, i.e. ∆ has just two bits of entropy.
+/// Since we have to open and transmit all but one of the seeds, using a larger k for SoftSpokenVOLE doesn't save significant communication and solely wastes computation. 
+pub fn commit_seeds(seed0: &Vec<u8>, seed1: &Vec<u8>) -> Vec<u8> {
+    blake3::hash(
+        &[
+        *blake3::hash(seed0).as_bytes(),
+        *blake3::hash(seed1).as_bytes(),
+        ].concat()
+    ).as_bytes().to_vec()
 }
+
 /// Just open one seed and hide the other since only two were committed :P. The proof an element is just the hash of the other hidden element
-pub fn proof_for_revealed_seed(other_seed: &Vec<u8>) -> Vec<u8> {
-    let mut hasher = Sha512::new();
-    hasher.update(other_seed);
-    hasher.finalize().to_vec()
+pub fn proof_for_revealed_seed(other_seed: &Vec<u8>) -> [u8; 32] {
+    *blake3::hash(other_seed).as_bytes()
 }
 
 /// Verifies a proof for a committed seed
@@ -214,17 +207,16 @@ pub fn verify_proof_of_revealed_seed(
     commitment: &Vec<u8>,
     revealed_seed: &Vec<u8>, 
     revealed_seed_idx: bool, 
-    proof: &Vec<u8>
+    proof: &[u8; 32]
 ) -> bool {
-    let mut hasher = Sha512::new();
+    let digest_of_revealed = *blake3::hash(revealed_seed).as_bytes();
+    let preimage = 
     if revealed_seed_idx {
-        hasher.update(proof);
-        hasher.update(revealed_seed);
+        [proof.clone(), digest_of_revealed].concat()
     } else {
-        hasher.update(revealed_seed);
-        hasher.update(proof);
-    }
-    &hasher.finalize().to_vec() == commitment
+        [digest_of_revealed, proof.clone()].concat()
+    };
+    blake3::hash(&preimage).as_bytes().to_vec() == *commitment
 }
 
 #[cfg(test)]
@@ -274,5 +266,25 @@ mod test {
         x[3] = 0x03;
 
         assert_eq!(fr_from_256bit(&x), Fr::from_str_vartime("3").unwrap());
+    }
+    
+    #[test]
+    fn test_seed_commit_prove() {
+        let seed0 = [5u8; 32].to_vec();
+        let seed1 = [6u8; 32].to_vec();
+        let commitment = commit_seeds(&seed0, &seed1);
+
+        let proof0 = proof_for_revealed_seed(&seed1);
+        let proof1 = proof_for_revealed_seed(&seed0);
+
+        assert!(verify_proof_of_revealed_seed(&commitment, &seed0, false, &proof0));
+        assert!(!verify_proof_of_revealed_seed(&commitment, &seed0, true, &proof0));
+
+        assert!(verify_proof_of_revealed_seed(&commitment, &seed1, true, &proof1));
+        assert!(!verify_proof_of_revealed_seed(&commitment, &seed1, false, &proof1));
+
+        assert!(!verify_proof_of_revealed_seed(&commitment, &seed0, true, &proof1));
+        assert!(!verify_proof_of_revealed_seed(&commitment, &seed0, false, &proof1));
+
     }
 }
