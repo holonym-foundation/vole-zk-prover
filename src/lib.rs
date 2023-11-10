@@ -71,7 +71,7 @@ fn u64s_overflow_field(x: &[u64; 4]) -> bool {
 /// Don't be tempted to return 2x-1 as many elements by including each recent_lvl in the output. That would make some resulting elements predictable from others
 /// TODO: speed up by not converting to/from string
 /// TODO: possible speed up in browser by using crypto sha256 function in the browser rather than wasm
-pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Vec<u8>> {
+pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
     let mut recent_lvl = vec![seed];
     for i in 0..log_length {
         let mut tmp = Vec::with_capacity(2usize.pow(i));
@@ -117,7 +117,7 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Vec<u8>> {
                 u64::from_be_bytes(b[24..32].try_into().unwrap())
             ];
         }
-        b
+        fr_from_256bit(&as_4u64s)
     }).collect()
     
 }
