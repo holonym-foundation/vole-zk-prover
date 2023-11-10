@@ -41,7 +41,7 @@ struct VerifierSmallVOLEOutputs {
 
 struct VOLE;
 impl VOLE {
-    /// Creates a small field VOLE from two seeds and two Deltas
+    /// Creates a small VOLE from two seeds and two Deltas
     pub fn prover_outputs(seed1: &[u8; 32], seed2: &[u8; 32], vole_length: usize) -> ProverSmallVOLEOutputs {
         let out1 = expand_seed_to_Fr_vec(seed1, vole_length);
         let out2 = expand_seed_to_Fr_vec(seed2, vole_length);
@@ -50,15 +50,16 @@ impl VOLE {
         let v = zipped.map(|(o1, o2)| Fr::ZERO - (*o1 * DELTA_CHOICES[0] + *o2 * DELTA_CHOICES[1]) ).collect();
         ProverSmallVOLEOutputs { u, v }
     }
-    pub fn verifier_outputs(idx: bool, seed_i_know: &[u8; 32], vole_length: usize) -> VerifierSmallVOLEOutputs {
+    /// Verifier shuold call this after (get) to receive their small VOLE output
+    pub fn verifier_outputs(seed_i_know: &[u8; 32], idx_i_dont_know: bool, vole_length: usize) -> VerifierSmallVOLEOutputs {
         let out = expand_seed_to_Fr_vec(seed_i_know, vole_length);
-        let (delta, other_delta_minus_my_delta) = if idx { 
-            (DELTA_CHOICES[1], DELTA_CHOICES[0] - DELTA_CHOICES[1])
+        let (delta, delta_minus_other_delta) = if idx_i_dont_know { 
+            (DELTA_CHOICES[1], DELTA_CHOICES[1] - DELTA_CHOICES[0])
         } else { 
-            (DELTA_CHOICES[0], DELTA_CHOICES[1] - DELTA_CHOICES[0])
+            (DELTA_CHOICES[0], DELTA_CHOICES[0] - DELTA_CHOICES[1])
         };
 
-        let q = out.iter().map(|o| *o * other_delta_minus_my_delta).collect();
+        let q = out.iter().map(|o| *o * delta_minus_other_delta).collect();
         VerifierSmallVOLEOutputs { delta, q }
     }
     
@@ -75,12 +76,18 @@ mod test {
         let seed0 = [9u8; 32];
         let seed1 = [2u8; 32];
         let prover_outputs = VOLE::prover_outputs(&seed0, &seed1, 100);
-        let verifier_outputs_0 = VOLE::verifier_outputs(false, &seed0, 100);
-        let verifier_outputs_1 = VOLE::verifier_outputs(true, &seed1, 100);
-        
+        let verifier_outputs_0 = VOLE::verifier_outputs(&seed0, true, 100);
+        let verifier_outputs_1 = VOLE::verifier_outputs(&seed1, false, 100);
+
         assert!(
-            izip!(prover_outputs.u, prover_outputs.v, verifier_outputs_0.q).all(
-                |(u, v, q)| u * verifier_outputs_0.delta + v == q
+            izip!(&prover_outputs.u, &prover_outputs.v, &verifier_outputs_0.q).all(
+                |(u, v, q)| u.clone() * verifier_outputs_0.delta + v == q.clone()
+            )
+        );
+
+        assert!(
+            izip!(prover_outputs.u, prover_outputs.v, verifier_outputs_1.q).all(
+                |(u, v, q)| u * verifier_outputs_1.delta + v == q
             )
         )
     }
