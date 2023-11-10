@@ -9,10 +9,10 @@ edition = "2021"
 anyhow = "1.0.75"
 blake3 = "1.5.0"
 ff = { version = "0.13", features = ["derive"] }
+itertools = "0.11.0"
 lazy_static = "1.4.0"
 num-bigint = "0.4.4"
 ocelot = { path = "./swanky/ocelot" }
-poseidon-rs = "0.0.10"
 rand = "0.8.5"
 scuttlebutt = { path = "./swanky/scuttlebutt" }
 
