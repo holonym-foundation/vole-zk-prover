@@ -66,29 +66,26 @@ fn u64s_overflow_field(x: &[u64; 4]) -> bool {
 // }
 
 
-/// Takes a seed and uses it to create a Vec of Fr elements. Uses rejection sampling so isn't constant time!
-/// Returns 2^log_length Fr elements, represented as big-endian bytes
-/// Don't be tempted to return 2x-1 as many elements by including each recent_lvl in the output. That would make some resulting elements predictable from others
-/// TODO: speed up by not converting to/from string
-/// TODO: possible speed up in browser by using crypto sha256 function in the browser rather than wasm
-pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
-    let mut recent_lvl = vec![seed];
-    for i in 0..log_length {
-        let mut tmp = Vec::with_capacity(2usize.pow(i));
-        for j in 0..recent_lvl.len() {
-            // tmp.push(*blake3::hash(recent_lvl[j].as_ref()).as_bytes());
-            let mut hasher = Sha512::new();
-            hasher.update(&recent_lvl[j]);
-            let digest = hasher.finalize();
-            // let d2 = digest.as_slice();
-            tmp.push(digest[0..32].to_vec());
-            tmp.push(digest[32..64].to_vec());
-        }
-        recent_lvl = tmp;
+/// New method over 2x faster: generate the 0th output o_0 by doing sha256(seed), then o_1 by sha256(seed || o_0), then o_2 by sha256(seed || o_1)
+/// Note: be careful of length extension attacks if modifying this
+/// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
+/// TODO: see if native browser sha256 improves performance even compared to blake3
+pub fn expand_seed_to_Fr_vec(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
+    let mut outputs_bytes: Vec<[u8; 32]> = Vec::with_capacity(num_outputs);
+    outputs_bytes.push(
+        *blake3::hash(seed).as_bytes()
+    );
+    for i in 0..num_outputs {
+        outputs_bytes.push(
+            *blake3::hash(
+                &[
+                    seed,
+                    outputs_bytes[i].as_ref()
+                ].concat()
+            ).as_bytes()
+        )
     }
-
-    // Collect the children as a Vec<Fr> using rejection sampling
-    recent_lvl.iter().map(|x| {
+    outputs_bytes.iter().map(|x|{
         let mut b = x.clone();
         // Prime modulus is only 254 bits; & the largest (0th) byte with 0x3F to ensure as close as possible to the prime modulus
         b[0] = b[0] & 0x3F;
@@ -105,9 +102,7 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
             u64::from_be_bytes(b[24..32].try_into().unwrap())
         ];
         while u64s_overflow_field(&as_4u64s) {
-            let mut hasher = Sha512::new();
-            hasher.update(b);
-            b = hasher.finalize().to_vec();
+            b = *blake3::hash(b.as_ref()).as_bytes();
             // Make it close to the 254-bit modulus
             b[0] = b[0] & 0x3F;
             // as_2u128s = [
@@ -124,8 +119,71 @@ pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, log_length: u32) -> Vec<Fr> {
         }
         fr_from_256bit(&as_4u64s)
     }).collect()
-    
 }
+
+// /// Old method: make a tree of sha512 hashes and use two 256-bit halves each level as inputs to the next level:
+// /// Takes a seed and uses it to create a Vec of Fr elements. Uses rejection sampling so isn't constant time!
+// /// Returns 2^log_length Fr elements, represented as big-endian bytes
+// /// Don't be tempted to return 2x-1 as many elements by including each recent_lvl in the output. That would make some resulting elements predictable from others
+// /// TODO: speed up by not converting to/from string
+// /// TODO: possible speed up in browser by using crypto sha256 function in the browser rather than wasm
+// pub fn expand_seed_to_Fr_vec(seed: Vec<u8>, length: usize/*log_length: u32*/) -> Vec<Fr> {
+
+
+//     let mut recent_lvl = vec![seed];
+//     for i in 0..log_length {
+//         let mut tmp = Vec::with_capacity(2usize.pow(i));
+//         for j in 0..recent_lvl.len() {
+//             // tmp.push(*blake3::hash(recent_lvl[j].as_ref()).as_bytes());
+//             let mut hasher = Sha512::new();
+//             hasher.update(&recent_lvl[j]);
+//             let digest = hasher.finalize();
+//             // let d2 = digest.as_slice();
+//             tmp.push(digest[0..32].to_vec());
+//             tmp.push(digest[32..64].to_vec());
+//         }
+//         recent_lvl = tmp;
+//     }
+
+//     // Collect the children as a Vec<Fr> using rejection sampling
+//     recent_lvl.iter().map(|x| {
+//         let mut b = x.clone();
+//         // Prime modulus is only 254 bits; & the largest (0th) byte with 0x3F to ensure as close as possible to the prime modulus
+//         b[0] = b[0] & 0x3F;
+//         // let mut as_2u128s = [
+//         //     u128::from_be_bytes(x[0..16].try_into().unwrap()),
+//         //     u128::from_be_bytes(x[16..32].try_into().unwrap())
+//         // ];
+//         // b
+//         // while u128s_overflow_field(&as_2u128s) {
+//         let mut as_4u64s = [
+//             u64::from_be_bytes(b[0..8].try_into().unwrap()),
+//             u64::from_be_bytes(b[8..16].try_into().unwrap()),
+//             u64::from_be_bytes(b[16..24].try_into().unwrap()),
+//             u64::from_be_bytes(b[24..32].try_into().unwrap())
+//         ];
+//         while u64s_overflow_field(&as_4u64s) {
+//             let mut hasher = Sha512::new();
+//             hasher.update(b);
+//             b = hasher.finalize().to_vec();
+//             // Make it close to the 254-bit modulus
+//             b[0] = b[0] & 0x3F;
+//             // as_2u128s = [
+//             //     u128::from_be_bytes(b[0..16].try_into().unwrap()),
+//             //     u128::from_be_bytes(b[16..32].try_into().unwrap())
+//             // ];
+            
+//             as_4u64s = [
+//                 u64::from_be_bytes(b[0..8].try_into().unwrap()),
+//                 u64::from_be_bytes(b[8..16].try_into().unwrap()),
+//                 u64::from_be_bytes(b[16..24].try_into().unwrap()),
+//                 u64::from_be_bytes(b[24..32].try_into().unwrap())
+//             ];
+//         }
+//         fr_from_256bit(&as_4u64s)
+//     }).collect()
+    
+// }
 
 /// Instead of long vectors in most VOLE protocols, we're just doing a "vector" commitment to three values,
 /// This means lambda for our SoftSpokenVOLE instantiation is 3, i.e. ∆ has just under two bits of entropy.
@@ -176,11 +234,20 @@ mod test {
     #[test]
     fn test_seed_expansion_len() {
         let seed = [0u8; 32];
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 0).len(), 1);
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 1).len(), 2);
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 2).len(), 4);
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 10).len(), 1024);
+        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 1).len(), 1);
+        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 2).len(), 2);
+        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 4).len(), 4);
+        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 1000).len(), 1000);
     }
+
+    // #[test]
+    // fn test_seed_expansion_len() {
+    //     let seed = [0u8; 32];
+    //     assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 0).len(), 1);
+    //     assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 1).len(), 2);
+    //     assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 2).len(), 4);
+    //     assert_eq!(super::expand_seed_to_Fr_vec(seed.to_vec(), 10).len(), 1024);
+    // }
 
     #[test]
     // TODO: add more edge cases
