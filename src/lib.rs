@@ -1,3 +1,4 @@
+pub mod subspacevole;
 pub mod smallvole;
 pub mod vecccom;
 #[macro_use]
