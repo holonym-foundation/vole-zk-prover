@@ -1,6 +1,6 @@
 use std::{str::FromStr};
 use rand::prelude::*;
-use ff::PrimeField;
+use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
@@ -36,7 +36,8 @@ fn u64s_overflow_field(x: &[u64; 4]) -> bool {
 //     x[0] > MODULUS_AS_U128s[0] || (x[0] == MODULUS_AS_U128s[0] && x[1] >= MODULUS_AS_U128s[1])
 // }
 
-/// Highly efficient way of making an Fr from a big-endian u64 array representing that number
+/// Efficient way of making an Fr from a big-endian u64 array representing that number
+/// TODO: It is still the major overhead in seed expansion; see whether there's a faster way
 /// Does not check for overflow
 /// TODO: Check whether ff or ff_ce has this method already and if not, contributing a more generic version.
 pub fn fr_from_be_u64slice_unchecked(from: &[u64; 4]) -> Fr {
@@ -61,15 +62,15 @@ pub fn fr_from_be_u64slice_unchecked(from: &[u64; 4]) -> Fr {
 /// Newer method much faster: use a CSPRNG
 /// Returns N Frs
 /// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
-pub fn expand_seed_to_Fr_vec_faster(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
-    let mut seed: <StdRng as SeedableRng>::Seed = *seed;
+pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> Vec<Fr> {
+    let seed: <StdRng as SeedableRng>::Seed = seed;
     let mut r = StdRng::from_seed(seed);
     let mut out: Vec<Fr> = Vec::with_capacity(num_outputs);
     // let mut output = r.gen::<Vec<[u64; 4]>>()
     // let mut output = [0u64; N];
     // let mut output = Vec::<u64>::with_capacity(N);
 
-    for i in 0..num_outputs {
+    for _i in 0..num_outputs {
         // Rejection sample a random 254 bit big-endian value
         // Generate 4 u64s and try to put them into a Fr
         // AND the two most significant bits with 00, producing a random 254 bit big-endian value
@@ -94,61 +95,62 @@ pub fn expand_seed_to_Fr_vec_faster(seed: &[u8; 32], num_outputs: usize) -> Vec<
     out
 }
 
-/// New method over 2x faster: generate the 0th output o_0 by doing sha256(seed), then o_1 by sha256(seed || o_0), then o_2 by sha256(seed || o_1)
-/// Note: be careful of length extension attacks if modifying this
-/// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
-/// TODO: see if native browser sha256 improves performance even compared to blake3
-pub fn expand_seed_to_Fr_vec(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
-    let mut outputs_bytes: Vec<[u8; 32]> = Vec::with_capacity(num_outputs);
-    outputs_bytes.push(
-        *blake3::hash(seed).as_bytes()
-    );
-    for i in 0..num_outputs-1 {
-        outputs_bytes.push(
-            *blake3::hash(
-                &[
-                    seed,
-                    outputs_bytes[i].as_ref()
-                ].concat()
-            ).as_bytes()
-        )
-    }
+// /// Old method, an improvement over the even older method
+// /// New method over 2x faster: generate the 0th output o_0 by doing sha256(seed), then o_1 by sha256(seed || o_0), then o_2 by sha256(seed || o_1)
+// /// Note: be careful of length extension attacks if modifying this
+// /// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
+// /// TODO: see if native browser sha256 improves performance even compared to blake3
+// pub fn expand_seed_to_Fr_vec(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
+//     let mut outputs_bytes: Vec<[u8; 32]> = Vec::with_capacity(num_outputs);
+//     outputs_bytes.push(
+//         *blake3::hash(seed).as_bytes()
+//     );
+//     for i in 0..num_outputs-1 {
+//         outputs_bytes.push(
+//             *blake3::hash(
+//                 &[
+//                     seed,
+//                     outputs_bytes[i].as_ref()
+//                 ].concat()
+//             ).as_bytes()
+//         )
+//     }
 
-    outputs_bytes.iter().map(|x|{
-        let mut b = x.clone();
-        // Prime modulus is only 254 bits; & the largest (0th) byte with 0x3F to ensure as close as possible to the prime modulus
-        b[0] = b[0] & 0x3F;
-        // let mut as_2u128s = [
-        //     u128::from_be_bytes(x[0..16].try_into().unwrap()),
-        //     u128::from_be_bytes(x[16..32].try_into().unwrap())
-        // ];
-        // b
-        // while u128s_overflow_field(&as_2u128s) {
-        let mut as_4u64s = [
-            u64::from_be_bytes(b[0..8].try_into().unwrap()),
-            u64::from_be_bytes(b[8..16].try_into().unwrap()),
-            u64::from_be_bytes(b[16..24].try_into().unwrap()),
-            u64::from_be_bytes(b[24..32].try_into().unwrap())
-        ];
-        while u64s_overflow_field(&as_4u64s) {
-            b = *blake3::hash(b.as_ref()).as_bytes();
-            // Make it close to the 254-bit modulus
-            b[0] = b[0] & 0x3F;
-            // as_2u128s = [
-            //     u128::from_be_bytes(b[0..16].try_into().unwrap()),
-            //     u128::from_be_bytes(b[16..32].try_into().unwrap())
-            // ];
+//     outputs_bytes.iter().map(|x|{
+//         let mut b = x.clone();
+//         // Prime modulus is only 254 bits; & the largest (0th) byte with 0x3F to ensure as close as possible to the prime modulus
+//         b[0] = b[0] & 0x3F;
+//         // let mut as_2u128s = [
+//         //     u128::from_be_bytes(x[0..16].try_into().unwrap()),
+//         //     u128::from_be_bytes(x[16..32].try_into().unwrap())
+//         // ];
+//         // b
+//         // while u128s_overflow_field(&as_2u128s) {
+//         let mut as_4u64s = [
+//             u64::from_be_bytes(b[0..8].try_into().unwrap()),
+//             u64::from_be_bytes(b[8..16].try_into().unwrap()),
+//             u64::from_be_bytes(b[16..24].try_into().unwrap()),
+//             u64::from_be_bytes(b[24..32].try_into().unwrap())
+//         ];
+//         while u64s_overflow_field(&as_4u64s) {
+//             b = *blake3::hash(b.as_ref()).as_bytes();
+//             // Make it close to the 254-bit modulus
+//             b[0] = b[0] & 0x3F;
+//             // as_2u128s = [
+//             //     u128::from_be_bytes(b[0..16].try_into().unwrap()),
+//             //     u128::from_be_bytes(b[16..32].try_into().unwrap())
+//             // ];
             
-            as_4u64s = [
-                u64::from_be_bytes(b[0..8].try_into().unwrap()),
-                u64::from_be_bytes(b[8..16].try_into().unwrap()),
-                u64::from_be_bytes(b[16..24].try_into().unwrap()),
-                u64::from_be_bytes(b[24..32].try_into().unwrap())
-            ];
-        }
-        fr_from_be_u64slice_unchecked(&as_4u64s)
-    }).collect()
-}
+//             as_4u64s = [
+//                 u64::from_be_bytes(b[0..8].try_into().unwrap()),
+//                 u64::from_be_bytes(b[8..16].try_into().unwrap()),
+//                 u64::from_be_bytes(b[16..24].try_into().unwrap()),
+//                 u64::from_be_bytes(b[24..32].try_into().unwrap())
+//             ];
+//         }
+//         fr_from_be_u64slice_unchecked(&as_4u64s)
+//     }).collect()
+// }
 
 // /// Old method: make a tree of sha512 hashes and use two 256-bit halves each level as inputs to the next level:
 // /// Takes a seed and uses it to create a Vec of Fr elements. Uses rejection sampling so isn't constant time!
@@ -255,10 +257,10 @@ mod test {
     #[test]
     fn test_seed_expansion_len() {
         let seed = [0u8; 32];
-        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 1).len(), 1);
-        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 2).len(), 2);
-        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 4).len(), 4);
-        assert_eq!(super::expand_seed_to_Fr_vec(&seed, 1000).len(), 1000);
+        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 1).len(), 1);
+        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 2).len(), 2);
+        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 4).len(), 4);
+        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 1000).len(), 1000);
     }
 
     // #[test]
