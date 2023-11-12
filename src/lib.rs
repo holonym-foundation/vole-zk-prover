@@ -1,6 +1,8 @@
 pub mod subspacevole;
 pub mod smallvole;
 pub mod vecccom;
+use ff::Field;
+// use num_traits::Zero;
 #[macro_use]
 extern crate ff;
 use crate::ff::PrimeField;
@@ -11,3 +13,22 @@ use crate::ff::PrimeField;
 // Important this matches the endianness of MODULUS_AS_U128s
 #[PrimeFieldReprEndianness = "big"]
 pub struct Fr([u64; 4]);
+
+impl polynomen::One for Fr {
+    fn one() -> Self {
+        Fr::ONE
+    }
+    fn is_one(&self) -> bool {
+       self.eq(&Fr::ONE)
+    }
+}
+
+
+impl polynomen::Zero for Fr {
+    fn zero() -> Self {
+        Fr::ZERO
+    }
+    fn is_zero(&self) -> bool {
+       self.eq(&Fr::ZERO)
+    }
+}
