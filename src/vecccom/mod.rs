@@ -1,5 +1,5 @@
 use std::{str::FromStr};
-
+use rand::prelude::*;
 use ff::PrimeField;
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
@@ -37,8 +37,9 @@ fn u64s_overflow_field(x: &[u64; 4]) -> bool {
 // }
 
 /// Highly efficient way of making an Fr from a big-endian u64 array representing that number
+/// Does not check for overflow
 /// TODO: Check whether ff or ff_ce has this method already and if not, contributing a more generic version.
-pub fn fr_from_be_u64slice(from: &[u64; 4]) -> Fr {
+pub fn fr_from_be_u64slice_unchecked(from: &[u64; 4]) -> Fr {
     Fr::from(from[3]) +
     Fr::from(from[2]) * *TWO_64 +
     Fr::from(from[1]) * *TWO_128 +
@@ -56,6 +57,42 @@ pub fn fr_from_be_u64slice(from: &[u64; 4]) -> Fr {
 //     ret
 // }
 
+
+/// Newer method much faster: use a CSPRNG
+/// Returns N Frs
+/// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
+pub fn expand_seed_to_Fr_vec_faster(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
+    let mut seed: <StdRng as SeedableRng>::Seed = *seed;
+    let mut r = StdRng::from_seed(seed);
+    let mut out: Vec<Fr> = Vec::with_capacity(num_outputs);
+    // let mut output = r.gen::<Vec<[u64; 4]>>()
+    // let mut output = [0u64; N];
+    // let mut output = Vec::<u64>::with_capacity(N);
+
+    for i in 0..num_outputs {
+        // Rejection sample a random 254 bit big-endian value
+        // Generate 4 u64s and try to put them into a Fr
+        // AND the two most significant bits with 00, producing a random 254 bit big-endian value
+        
+        let mut candidate = [
+            r.next_u64() & 0x3F,
+            r.next_u64(),
+            r.next_u64(),
+            r.next_u64(),
+        ];
+
+        while u64s_overflow_field(&candidate) {
+            candidate = [
+                r.next_u64() & 0x3F,
+                r.next_u64(),
+                r.next_u64(),
+                r.next_u64(),
+            ];
+        }
+        out.push(fr_from_be_u64slice_unchecked(&candidate));
+    }
+    out
+}
 
 /// New method over 2x faster: generate the 0th output o_0 by doing sha256(seed), then o_1 by sha256(seed || o_0), then o_2 by sha256(seed || o_1)
 /// Note: be careful of length extension attacks if modifying this
@@ -109,7 +146,7 @@ pub fn expand_seed_to_Fr_vec(seed: &[u8; 32], num_outputs: usize) -> Vec<Fr> {
                 u64::from_be_bytes(b[24..32].try_into().unwrap())
             ];
         }
-        fr_from_be_u64slice(&as_4u64s)
+        fr_from_be_u64slice_unchecked(&as_4u64s)
     }).collect()
 }
 
@@ -243,21 +280,21 @@ mod test {
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000002;
 
-        assert_eq!(fr_from_be_u64slice(&x), Fr::from_str_vartime("1").unwrap());
+        assert_eq!(fr_from_be_u64slice_unchecked(&x), Fr::from_str_vartime("1").unwrap());
 
         x[0] = 0x30644E72E131A029;
         x[1] = 0xB85045B68181585D;
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000001;
 
-        assert_eq!(fr_from_be_u64slice(&x), Fr::from_str_vartime("0").unwrap());
+        assert_eq!(fr_from_be_u64slice_unchecked(&x), Fr::from_str_vartime("0").unwrap());
 
         x[0] = 0x0;
         x[1] = 0x0;
         x[2] = 0x0;
         x[3] = 0x03;
 
-        assert_eq!(fr_from_be_u64slice(&x), Fr::from_str_vartime("3").unwrap());
+        assert_eq!(fr_from_be_u64slice_unchecked(&x), Fr::from_str_vartime("3").unwrap());
     }
     
     #[test]
