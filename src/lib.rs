@@ -1,7 +1,9 @@
 pub mod subspacevole;
 pub mod smallvole;
 pub mod vecccom;
+
 use ff::Field;
+use nalgebra::ClosedMul;
 // use num_traits::Zero;
 #[macro_use]
 extern crate ff;
@@ -32,3 +34,39 @@ impl polynomen::Zero for Fr {
        self.eq(&Fr::ZERO)
     }
 }
+
+impl num_traits::One for Fr {
+    fn one() -> Self {
+        Fr::ONE
+    }
+    fn is_one(&self) -> bool {
+       self.eq(&Fr::ONE)
+    }
+}
+impl num_traits::Zero for Fr {
+    fn zero() -> Self {
+        Fr::ZERO
+    }
+    fn is_zero(&self) -> bool {
+       self.eq(&Fr::ZERO)
+    }
+}
+
+// impl ClosedMul for Fr {}
+// impl std::ops::Mul for Fr {
+//     type Output = Self;
+//     fn mul(self, rhs: Self) -> Self {
+//         let mut out = self;
+//         out.mul_assign(rhs);
+//         out
+//     }
+// }
+// impl MulAssign for Fr {
+//     fn mul_assign(&mut self, rhs: Self) {
+//         *self = *self * rhs;
+//     }
+// }
+// // Crates such as nalgebra do not allow 
+// fn matmul_fr() {
+
+// }

@@ -30,33 +30,11 @@ use crate::ff::Field;
 //     }
 // }
 
-// /// Multiplies two polynomials, given by matrix of their coefficients. Currently 
-// pub fn polynomial_mul<T: Add + Mul>(a: Vec<Fr>, b: Vec<Fr>) {
-//     let mut out = Vec::with_capacity(a.len() + b.len());
-//     let a = a.reverse();
-//     let b = b.reverse();
-
-// } 
-
 /// Gets idx'th Lagrange basis for a polynomial of degree deg
 /// idx is 1-indexed
 /// TODO: make sure Poly keeps 0 coefficients rather than return a shorter coefficient vector. This would cause a panic
 /// although it does not seem a crash would leak any info since these matrices are public...
 pub fn lagrange_basis_coeffs(idx: u64, deg: u64) -> Vec<Fr> {
-    // let poly = (0..deg)
-    //     .fold(Poly::new_from_coeffs(&vec![Fr::ONE]), |prev, curr_index| {
-    //         if curr_index == idx {
-    //             prev
-    //         } else {
-    //             let denominator_value = (Fr::from(idx) - Fr::from(curr_index));
-    //             let numerator_polynomial = Poly::new_from_coeffs(&vec![Fr::ONE, Fr::ZERO - Fr::from(curr_index)]);
-    //             let curr_term = numerator_polynomial; // * Poly::new_from_coeffs(&vec![denominator_value.invert().unwrap()]); // Can't panic if this was implementaed well
-    //             prev * curr_term
-    //         }
-    //     });
-
-        let fr_idx = Fr::from(idx);
-
         let roots = (1..deg+1)
             .filter(|x| *x != idx)
             .map(|x| Fr::from(x));
@@ -108,6 +86,7 @@ mod test {
     use std::ops::Mul;
 
     use ff::Field;
+    use nalgebra::{Matrix2x4, Matrix4x2};
 
     use super::*;
     #[test]
@@ -126,10 +105,9 @@ mod test {
     fn tc_times_inv_eq_identity() {
         let tc = ReedSolomonCode::construct_tc::<5>();
         let tcinv = ReedSolomonCode::construct_tc_inverse::<5>();
-        let should_be_identity = tc.mul(Fr::ONE);
-        // println!("tc: {:?}", tc);
-        // println!("tcinv: {:?}", tcinv);
+        let should_be_identity = tc * tcinv;
         println!("should_be_identity: {:?}", should_be_identity);
+
         todo!("implement")
     }
 }

@@ -12,6 +12,7 @@ ff = { version = "0.13", features = ["derive"] }
 itertools = "0.11.0"
 lazy_static = "1.4.0"
 nalgebra = "0.32.3"
+ndarray = "0.15.6"
 nshare = "0.9.0"
 num-bigint = "0.4.4"
 num-traits = "0.2.17"
