@@ -77,7 +77,7 @@ impl ReedSolomonCode {
             let coeffs = lagrange_basis_coeffs(i as u64, N as u64);
             out.append(&mut coeffs.clone());
         }
-        SMatrix::<Fr, N, N>::from_row_slice(&out) // Switch to columns for transpose
+        SMatrix::<Fr, N, N>::from_column_slice(&out) // Switch to columns for transpose
     }
 }
 
@@ -107,7 +107,10 @@ mod test {
         let tcinv = ReedSolomonCode::construct_tc_inverse::<5>();
         let should_be_identity = tc * tcinv;
         println!("should_be_identity: {:?}", should_be_identity);
-
-        todo!("implement")
+        let identity = SMatrix::<Fr, 5, 5>::identity();
+        assert_eq!(
+            should_be_identity,
+            identity
+        );
     }
 }
