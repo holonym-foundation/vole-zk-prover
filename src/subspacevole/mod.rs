@@ -1,9 +1,50 @@
 use std::ops::{Add, Mul};
+use std::time::Instant;
+use std::usize;
 
+use ff::PrimeField;
 use nalgebra::{self, SMatrix, };
 use polynomen::Poly;
-use crate::Fr;
+use crate::{Fr, FrRepr, DotProduct, FrVec, FrMatrix};
 use crate::ff::Field;
+
+
+pub fn sender_correction<const N: usize, const K: usize, const L: usize, const NminusK: usize>(U: &SMatrix<Fr, L, N>) -> SMatrix<Fr, N, NminusK> {
+    assert!(NminusK == N - K, "NminusK must be N - K");
+    let start = Instant::now();
+    let tc_inverse = ReedSolomonCode::construct_tc_inverse::<N>();
+    println!("inversion time: {:?}", start.elapsed());
+
+    let start = Instant::now();
+    let U_tcinv = U * tc_inverse;
+    println!("multiplication time: {:?}", start.elapsed());
+    U_tcinv.fixed_slice::<N, NminusK>(K, 0).into()
+}
+// pub trait SubspaceVOLESender {
+//     /// Returns the U matrix
+//     fn u(&self);
+//     /// Returns the V matrix
+//     fn v(&self);
+//     /// Returns the correction vector so that the Receiver can correct their ∆, Q
+//     fn correction(&self);
+// }
+
+// // Very inefficient (128+32 VOLES to get 32/2 elements of the witness), just for experiment with while i'm writing the library
+// pub struct ExampleSender {
+//     U: SMatrix<Fr, 128, 32>,
+//     V: SMatrix<Fr, 128, 32>,
+// }
+// impl SubspaceVOLESender for ExampleSender {
+//     fn u(&self) {
+//         self.U
+//     }
+//     fn v(&self) {
+//         self.V
+//     }
+//     fn correction() {
+//         unimplemented!()
+//     }
+// }
 
 // pub trait LinearCode<T, const N: usize, const K: usize>  {
 //     fn generator() -> SMatrix<T, K, N>;
@@ -53,11 +94,10 @@ pub fn lagrange_basis_coeffs(idx: u64, deg: u64) -> Vec<Fr> {
                 Poly::new_from_coeffs(&coeffs).eval(&Fr::from(x)) == Fr::ZERO
             }
         }));
-    coeffs
-    
+    coeffs   
 }
 
-struct ReedSolomonCode;
+pub struct ReedSolomonCode;
 impl ReedSolomonCode {
     // Cosntructs a Vandermode Matrix for N and K
     pub fn construct_generator<const N: usize, const K: usize>() -> SMatrix<Fr, K, N> {
@@ -66,6 +106,26 @@ impl ReedSolomonCode {
             base.pow([col as u64])
         })
     }
+
+    pub fn construct_generator_quickly<const N: usize, const K: usize>() -> FrMatrix {
+        assert!(N >= K, "N must be greater than or equal to K");
+        let mut out = Vec::with_capacity(K);
+        let zeroth_col = FrVec(vec![Fr::ONE; N]);
+        let first_col = FrVec((1..N+1).map(|x| Fr::from(x as u64)).collect());
+        out.push(zeroth_col);
+        out.push(first_col.clone());
+            for i in 2..K {
+               out.push(&out[i-1] * &first_col);
+            }
+        FrMatrix(out)
+    }
+
+    // // I think this will be far faster than constructing a bunch of Lagrange polynomials
+    // pub fn construct_systematic_generator_quickly<const N: usize, const K: usize>() -> FrMatrix {
+    //     let mut g = ReedSolomonCode::construct_generator_quickly::<N, K>();
+        
+
+    // }
     // Exploits the fact that an NxN Vandermonde matrix also satisfies the requirements for Tc matrix
     pub fn construct_tc<const N: usize>() -> SMatrix<Fr, N, N> {
         ReedSolomonCode::construct_generator::<N, N>()
@@ -83,10 +143,13 @@ impl ReedSolomonCode {
 
 #[cfg(test)]
 mod test {
-    use std::ops::Mul;
+    use std::{ops::Mul, time::Instant};
 
-    use ff::Field;
+    use ff::{Field, PrimeField};
     use nalgebra::{Matrix2x4, Matrix4x2};
+    use rand::rngs::ThreadRng;
+
+    use crate::FrRepr;
 
     use super::*;
     #[test]
@@ -112,5 +175,32 @@ mod test {
             should_be_identity,
             identity
         );
+    }
+
+    #[test]
+    fn test_construct_generator_quickly() {
+        let slow = ReedSolomonCode::construct_generator::<4, 3>();
+        let fast = ReedSolomonCode::construct_generator_quickly::<4, 3>();
+        println!("slow {:?}", slow);
+        println!("fast {:?}", fast);
+        // assert_eq!(slow., fast);
+    }
+    #[test]
+    fn asdf() {
+        // let start = Instant::now();
+        // let tc = ReedSolomonCode::construct_tc::<64>();
+        // println!("elapsed time: {:?}", start.elapsed());
+        // let start = Instant::now();
+        // let tcinv = ReedSolomonCode::construct_tc_inverse::<64>();
+        // println!("elapsed time: {:?}", start.elapsed());
+        // let U = SMatrix::<Fr, 45, 30>::from_fn(|row, col| {
+        //     Fr::random(&mut ThreadRng::default())
+        // });
+        // sender_correction::<30, 20, 45, 10>(&U);
+
+        // let repr: crate::FrRepr = Fr::from_str_vartime("5").unwrap().to_repr();
+        let repr = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 5u8];
+        assert!(Fr::from_str_vartime("5").unwrap() == Fr::from_repr(FrRepr(repr)).unwrap());
+        // println!("Repr {:?}", Fr::from_str_vartime("2").unwrap().0.iter().map(|x| format!("{:02x}", x)).collect::<Vec<_>>());
     }
 }

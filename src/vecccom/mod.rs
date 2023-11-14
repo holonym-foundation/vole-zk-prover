@@ -4,7 +4,7 @@ use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
 
-use crate::Fr;
+use crate::{Fr, FrRepr};
 
 lazy_static! {
     pub static ref FIELD_MODULUS: BigUint = BigUint::from_str("21888242871839275222246405745257275088548364400416034343698204186575808495617").unwrap();
@@ -36,15 +36,24 @@ fn u64s_overflow_field(x: &[u64; 4]) -> bool {
 //     x[0] > MODULUS_AS_U128s[0] || (x[0] == MODULUS_AS_U128s[0] && x[1] >= MODULUS_AS_U128s[1])
 // }
 
-/// Efficient way of making an Fr from a big-endian u64 array representing that number
 /// TODO: It is still the major overhead in seed expansion; see whether there's a faster way
-/// Does not check for overflow
 /// TODO: Check whether ff or ff_ce has this method already and if not, contributing a more generic version.
 pub fn fr_from_be_u64slice_unchecked(from: &[u64; 4]) -> Fr {
     Fr::from(from[3]) +
     Fr::from(from[2]) * *TWO_64 +
     Fr::from(from[1]) * *TWO_128 +
     Fr::from(from[0]) * *TWO_192
+}
+
+/// Efficient way of making an Fr from a big-endian u64 array representing that number
+/// Does not check for overflow
+pub fn fr_from_be_u64slice_unchecked_faster(from: &[u64; 4]) -> Fr {
+    let mut repr = [0u8; 32];
+    repr[0..8].copy_from_slice(&from[0].to_be_bytes());
+    repr[8..16].copy_from_slice(&from[1].to_be_bytes());
+    repr[16..24].copy_from_slice(&from[2].to_be_bytes());
+    repr[24..32].copy_from_slice(&from[3].to_be_bytes());
+    Fr::from_repr_vartime(FrRepr(repr)).unwrap()
 }
 
 // /// Generates 2^log_length Fr elements. 2^long_length means it can be put into a binary merkle tree
@@ -90,7 +99,7 @@ pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> Vec<Fr> {
                 r.next_u64(),
             ];
         }
-        out.push(fr_from_be_u64slice_unchecked(&candidate));
+        out.push(fr_from_be_u64slice_unchecked_faster(&candidate));
     }
     out
 }
