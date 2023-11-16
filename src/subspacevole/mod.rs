@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul};
+use std::ops::{Add, Mul, Neg};
 use std::time::Instant;
 use std::usize;
 
@@ -71,10 +71,60 @@ pub fn sender_correction<const N: usize, const K: usize, const L: usize, const N
 //     }
 // }
 
+/// Represents an an elementary operation on the columns of a matrix
+pub enum ElementaryColumnOp {
+    /// Scales the column at the given index by the given scalar
+    Scale(Fr, usize),
+    /// Scales the column at the first index and adds it to the column at the second index
+    AddMultiple(Fr, usize, usize),
+    /// Swaps two columns at the given indices
+    Swap(usize, usize),
+}
+impl ElementaryColumnOp {
+    fn invert(&self) -> Option<Self> {
+        match self {
+            ElementaryColumnOp::Scale(scalar, idx) => {
+                let inv = scalar.invert();
+                if inv.is_none().unwrap_u8() == 1 { return None }
+                Some(
+                    ElementaryColumnOp::Scale(scalar.invert().unwrap(), *idx)
+                )
+            },
+            ElementaryColumnOp::AddMultiple(scalar, idx1, idx2) => {
+                Some(
+                    ElementaryColumnOp::AddMultiple(scalar.neg(), *idx1, *idx2)
+                )
+            },
+            ElementaryColumnOp::Swap(idx1, idx2) => {
+                Some(
+                    ElementaryColumnOp::Swap(*idx1, *idx2)
+                )
+            },
+        }
+    }
+}
+pub struct ElementaryColumnOpComposition(Vec<ElementaryColumnOp>);
+impl ElementaryColumnOpComposition {
+    pub fn inverse(&self) -> Option<Self> {
+        let res: Option<Vec<_>> = self.0.iter().rev().map(|op| { 
+            op.invert()
+        }).collect();
+        
+        match res {
+            None => None,
+            Some(res) => Some(Self(res))
+        }
+    }
+}
+// Converts a matrix to systematic form 
+pub fn convert_to_systematic() {
+    todo!()
+}
 /// Gets idx'th Lagrange basis for a polynomial of degree deg
 /// idx is 1-indexed
 /// TODO: make sure Poly keeps 0 coefficients rather than return a shorter coefficient vector. This would cause a panic
 /// although it does not seem a crash would leak any info since these matrices are public...
+/// TODO 0-idx instead of 1-idx because i don't see a need to 1-idx
 pub fn lagrange_basis_coeffs(idx: u64, deg: u64) -> Vec<Fr> {
         let roots = (1..deg+1)
             .filter(|x| *x != idx)
@@ -97,6 +147,28 @@ pub fn lagrange_basis_coeffs(idx: u64, deg: u64) -> Vec<Fr> {
     coeffs   
 }
 
+/// 0 indexed
+pub fn lagrange_basis(idx: u64, deg: u64) -> Poly<Fr> {
+    let roots = (0..deg)
+        .filter(|x| *x != idx)
+        .map(|x| Fr::from(x));
+
+    let poly = Poly::new_from_roots_iter(roots.clone());
+    // A lazy but expensive way to calculate the scaling factor lol (TODO: implement a better way, if it affects performance)
+    let scaling_factor = poly.eval(&Fr::from(idx)).invert().unwrap();
+    // Here is the 'right' way but for some reason it is not working properly:
+    // let scaling_factor = roots.reduce(|prev: Fr, next| prev * (fr_idx - next)).unwrap().invert().unwrap();
+
+    let coeffs: Vec<Fr> = poly.coeffs().iter().map(|x| *x * scaling_factor).collect();
+    debug_assert!((0..deg).all(|x|{
+        if x == idx {
+            Poly::new_from_coeffs(&coeffs).eval(&Fr::from(x)) == Fr::ONE
+        } else {
+            Poly::new_from_coeffs(&coeffs).eval(&Fr::from(x)) == Fr::ZERO
+        }
+    })); 
+    Poly::new_from_coeffs(&coeffs)
+}
 pub struct ReedSolomonCode;
 impl ReedSolomonCode {
     // Cosntructs a Vandermode Matrix for N and K
@@ -117,14 +189,50 @@ impl ReedSolomonCode {
             for i in 2..K {
                out.push(&out[i-1] * &first_col);
             }
+        // FrMatrix(out)
         FrMatrix(out)
     }
 
-    // // I think this will be far faster than constructing a bunch of Lagrange polynomials
-    // pub fn construct_systematic_generator_quickly<const N: usize, const K: usize>() -> FrMatrix {
-    //     let mut g = ReedSolomonCode::construct_generator_quickly::<N, K>();
-        
+    pub fn construct_systematic_generator<const N: usize, const K: usize>() -> FrMatrix {
+        let mut res: Vec<FrVec> = Vec::with_capacity(K);
+        for i in 0..K {
+            let p = lagrange_basis(i as u64, K as u64);
+            let evals = (0..N).map(|x| p.eval(&Fr::from(x as u64))).collect::<Vec<_>>();
+            res.push(FrVec(evals));
+        }
+        FrMatrix(res)
+        // println!("eval at [0,1,2,3,N-1]: {:?}", (0..N).map(|x| p.eval(&Fr::from(x as u64))).collect::<Vec<_>>());
+    }
 
+    /// Creates an invertible NxN matrix starting with the NxK generator matrix
+    pub fn create_tc_for_systematic_genetor<const N: usize, const K: usize>() -> FrMatrix {
+        let mut g = ReedSolomonCode::construct_systematic_generator::<N, K>();
+        println!("Dimensions: {:?}", g.dim());
+        for i in 0..(N-K) {
+            let mut new_col = g.0[i].clone();
+            new_col.0[0] += Fr::ONE;
+        }
+        todo!()
+    }
+    // // /// Creates the generator and converts it to reduced column echelon form. I think converting CCEF will be quicker constructing a bunch of Lagrange polynomials
+    // pub fn construct_systematic_generator_quickly<const N: usize, const K: usize>() -> FrMatrix {
+    //     assert!(N >= K, "N must >= K");
+    //     let mut g = ReedSolomonCode::construct_generator_quickly::<N, K>();
+    //     // Convert to CEF
+    //     // for (idx, mut col) in g.0[1..K].iter_mut().enumerate() {
+    //     for i in 1..K {
+    //         // let i = idx + 1;
+    //         // This clone is likely slightly expensive but I don't see an easy way around it in Rust because it won't allow mutable borrowing twice
+    //         for j in 0..i {
+    //             let prev_row = &g.0[j].clone();
+    //             g.0[i] -= prev_row;
+    //             g.0[i].0[i].invert().unwrap(); // Unwrap is fine because it will never be zero for a Vandermode matrix, and thus invert() should always be Some
+    //         }
+    //     }
+    //     println!("CEF {:?}", g);
+    //     // Convert to RCEF
+    //     todo!()
+    //     // FrMatrix(Vec<FrVec::)
     // }
     // Exploits the fact that an NxN Vandermonde matrix also satisfies the requirements for Tc matrix
     pub fn construct_tc<const N: usize>() -> SMatrix<Fr, N, N> {
@@ -186,6 +294,20 @@ mod test {
         // assert_eq!(slow., fast);
     }
     #[test]
+    fn test_elementary_op_inverses() {
+        todo!()
+    }
+    #[test]
+    fn test_elementary_op_composite_inverses() {
+        todo!()
+    }
+    #[test]
+    fn test_systematic_code_creation() {
+        todo!("check converting a known matrix to its known systematic form");
+        todo!("alternatively, check systematic form spans the same subspace")
+    }
+    
+    #[test]
     fn asdf() {
         // let start = Instant::now();
         // let tc = ReedSolomonCode::construct_tc::<64>();
@@ -198,9 +320,6 @@ mod test {
         // });
         // sender_correction::<30, 20, 45, 10>(&U);
 
-        // let repr: crate::FrRepr = Fr::from_str_vartime("5").unwrap().to_repr();
-        let repr = [0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 5u8];
-        assert!(Fr::from_str_vartime("5").unwrap() == Fr::from_repr(FrRepr(repr)).unwrap());
-        // println!("Repr {:?}", Fr::from_str_vartime("2").unwrap().0.iter().map(|x| format!("{:02x}", x)).collect::<Vec<_>>());
+        ReedSolomonCode::create_tc_for_systematic_genetor::<8,4>();
     }
 }

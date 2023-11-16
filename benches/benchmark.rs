@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::{Field, PrimeField};
 use nalgebra::SMatrix;
 use rand::{rngs::ThreadRng, Rng};
-use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::VOLE, subspacevole::ReedSolomonCode, Fr, FrRepr};
+use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::VOLE, subspacevole::ReedSolomonCode, Fr, FrRepr, FrVec, DotProduct};
 // use volonym::rand_fr_vec;
 
 // fn matmul<const N: usize>() {
@@ -46,17 +46,22 @@ fn criterion_benchmark(c: &mut Criterion) {
     let ux: Vec<u64> = (0..1024).map(|_|ThreadRng::default().gen()).collect();
     let uy: Vec<u64> = (0..1024).map(|_|ThreadRng::default().gen()).collect();
 
+    let fvx = FrVec((0..640).map(|_|Fr::random(&mut ThreadRng::default())).collect::<Vec<_>>());
+    let fvy = FrVec((0..640).map(|_|Fr::random(&mut ThreadRng::default())).collect::<Vec<_>>());
+
     let mut repr = [0u8; 32];
     ThreadRng::default().fill(&mut repr);
-    group.sample_size(100);
+    group.sample_size(10);
 
     // group.bench_function("Creating a Fr from a repr", |b|b.iter(||Fr::from_repr(black_box(FrRepr(repr)))));
     // group.bench_function("Multiplying two 512x512 matrices", |b|b.iter(||matmul::<512>()));
     // group.bench_function("1024 length nalgebra dot", |b|b.iter(||matrix_row_col_dot(black_box(&x), black_box(&y))));
     // group.bench_function("1024 length simple dot", |b|b.iter(||naive_dot(&nx, &ny)));
     // group.bench_function("1024 length u64 dot", |b|b.iter(||u64_dot(&ux, &uy)));
+    group.bench_function("640 x 640 dot", |b|b.iter(||fvx.dot(&fvy)));
     // group.bench_function("Constructing 288 x 256 Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_generator::<64, 16>()));
-    group.bench_function("Constructing 1152 x 1024 Reed Solomon Generator matrix quickly", |b|b.iter(move||ReedSolomonCode::construct_generator_quickly::<1152, 1024>()));
+    // group.bench_function("Constructing 1152 x 1024 Reed Solomon Generator matrix quickly", |b|b.iter(move||ReedSolomonCode::construct_generator_quickly::<1152, 1024>()));
+    group.bench_function("Constructing 64 x 64 systematic Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_systematic_generator::<64, 64>())); // 256 x 256 takes 1.4s
     // group.bench_function("Constructing 288 x 256 Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_tc_inverse::<288>()));
 
     // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));

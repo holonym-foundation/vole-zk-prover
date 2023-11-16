@@ -2,7 +2,7 @@ pub mod subspacevole;
 pub mod smallvole;
 pub mod vecccom;
 
-use std::{ops::{Add, Mul}, process::Output};
+use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign}, process::Output};
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
@@ -19,7 +19,7 @@ use crate::ff::PrimeField;
 pub struct Fr([u64; 4]);
 
 #[derive(Debug, Clone)]
-pub struct FrVec(Vec<Fr>);
+pub struct FrVec(pub Vec<Fr>);
 impl Mul for FrVec {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
@@ -35,13 +35,73 @@ impl<'a, 'b> Mul<&'b FrVec> for &'a FrVec {
     }
 }
 
-impl Add for FrVec {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
-        Self(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
+impl<'a, 'b> Add<&'b FrVec> for &'a FrVec {
+    type Output = FrVec;
+    fn add(self, rhs: &'b FrVec) -> FrVec {
+        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
     }
 }
-trait DotProduct {
+impl<'a, 'b> Add<&'b FrVec> for &'a mut FrVec {
+    type Output = FrVec;
+    fn add(self, rhs: &'b FrVec) -> FrVec {
+        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
+    }
+}
+
+impl<'a, 'b> Sub<&'b FrVec> for &'a FrVec {
+    type Output =  FrVec;
+    fn sub(self, rhs: &'b FrVec) -> FrVec {
+        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
+    }
+}
+impl<'a> SubAssign<FrVec> for &'a mut FrVec{
+    fn sub_assign(&mut self, rhs: FrVec) {
+        self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
+    }
+}
+
+impl<'a, 'b> Sub<&'b FrVec> for &'a mut FrVec {
+    type Output =  FrVec;
+    fn sub(self, rhs: &'b FrVec) -> FrVec {
+        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
+    }
+}
+
+impl<'a, 'b> Sub<&'b mut FrVec> for &'a mut FrVec {
+    type Output =  FrVec;
+    fn sub(self, rhs: &'b mut FrVec) -> FrVec {
+        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
+    }
+}
+
+impl<'a, 'b> SubAssign<&'b FrVec> for FrVec {
+    fn sub_assign(&mut self, rhs: &'b FrVec) {
+        // *self = FrVec(vec![Fr::ONE]);
+        self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
+    }
+}
+impl<'a, 'b> SubAssign<&'b mut FrVec> for FrVec {
+    fn sub_assign(&mut self, rhs: &'b mut FrVec) {
+        // *self = FrVec(vec![Fr::ONE]);
+        self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
+    }
+}
+
+impl SubAssign for FrVec {
+    fn sub_assign(&mut self, rhs: Self) {
+        // *self = FrVec(vec![Fr::ONE]);
+        self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
+    }
+}
+
+impl<'a> Neg for &'a FrVec {
+    type Output = FrVec;
+    fn neg(self) -> FrVec {
+        FrVec(self.0.iter().map(|a| -*a).collect())
+    }
+}
+
+pub trait DotProduct {
     type Inner;
     fn dot(&self, rhs: &Self) -> Self::Inner;
 }
@@ -70,7 +130,7 @@ impl FrVec {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FrMatrix(Vec<FrVec>);
 impl FrMatrix {
     pub fn transpose(&self ) -> Self {
@@ -85,6 +145,9 @@ impl FrMatrix {
             res.push(FrVec(new));
         }
         Self(res)
+    }
+    pub fn dim(&self) -> (usize, usize) {
+        (self.0[0].0.len(), self.0.len())
     }
 }
 
