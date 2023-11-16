@@ -1,4 +1,4 @@
-use std::ops::{Add, Mul, Neg};
+use std::ops::{Add, Mul, Neg, MulAssign};
 use std::time::Instant;
 use std::usize;
 
@@ -103,22 +103,38 @@ impl ElementaryColumnOp {
         }
     }
 }
-pub struct ElementaryColumnOpComposition(Vec<ElementaryColumnOp>);
+pub struct ElementaryColumnOpComposition(pub Vec<ElementaryColumnOp>);
 impl ElementaryColumnOpComposition {
     pub fn inverse(&self) -> Option<Self> {
         let res: Option<Vec<_>> = self.0.iter().rev().map(|op| { 
             op.invert()
         }).collect();
-        
+
         match res {
             None => None,
             Some(res) => Some(Self(res))
         }
     }
 }
+
 // Converts a matrix to systematic form 
 pub fn convert_to_systematic() {
     todo!()
+    // Great starting point (but need to multiply the row before subtracting, then also need to do the same process from the bottom up)
+    // Also need to return the elementary column operations performed
+    //     assert!(N >= K, "N must >= K");
+    //     let mut g = ReedSolomonCode::construct_generator_quickly::<N, K>();
+    //     // Convert to CEF
+    //     // for (idx, mut col) in g.0[1..K].iter_mut().enumerate() {
+    //     for i in 1..K {
+    //         // let i = idx + 1;
+    //         // This clone is likely slightly expensive but I don't see an easy way around it in Rust because it won't allow mutable borrowing twice
+    //         for j in 0..i {
+    //             let prev_row = &g.0[j].clone();
+    //             g.0[i] -= prev_row;
+    //             g.0[i].0[i].invert().unwrap(); // Unwrap is fine because it will never be zero for a Vandermode matrix, and thus invert() should always be Some
+    //         }
+    //     }
 }
 /// Gets idx'th Lagrange basis for a polynomial of degree deg
 /// idx is 1-indexed

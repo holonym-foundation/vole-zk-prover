@@ -2,10 +2,11 @@ pub mod subspacevole;
 pub mod smallvole;
 pub mod vecccom;
 
-use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign}, process::Output};
+use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::Output};
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
+use subspacevole::ElementaryColumnOp;
 // use num_traits::Zero;
 #[macro_use]
 extern crate ff;
@@ -148,6 +149,22 @@ impl FrMatrix {
     }
     pub fn dim(&self) -> (usize, usize) {
         (self.0[0].0.len(), self.0.len())
+    }
+}
+
+impl MulAssign<ElementaryColumnOp> for FrMatrix {
+    fn mul_assign(&mut self, rhs: ElementaryColumnOp) {
+        match rhs {
+            ElementaryColumnOp::Swap(i, j) => {
+                self.0.swap(i, j);
+            },
+            ElementaryColumnOp::Scale(s, i) => {
+                self.0[i] = self.0[i].scalar_mul(&s);
+            },
+            ElementaryColumnOp::AddMultiple(s, i, j) => {
+                self.0[j] = &self.0[j] + &(self.0[i].scalar_mul(&s));
+            },
+        }
     }
 }
 
