@@ -6,7 +6,7 @@ use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::O
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
-use subspacevole::ElementaryColumnOp;
+// use subspacevole::{ElementaryColumnOp, ElementaryColumnOpComposition};
 // use num_traits::Zero;
 #[macro_use]
 extern crate ff;
@@ -152,21 +152,29 @@ impl FrMatrix {
     }
 }
 
-impl MulAssign<ElementaryColumnOp> for FrMatrix {
-    fn mul_assign(&mut self, rhs: ElementaryColumnOp) {
-        match rhs {
-            ElementaryColumnOp::Swap(i, j) => {
-                self.0.swap(i, j);
-            },
-            ElementaryColumnOp::Scale(s, i) => {
-                self.0[i] = self.0[i].scalar_mul(&s);
-            },
-            ElementaryColumnOp::AddMultiple(s, i, j) => {
-                self.0[j] = &self.0[j] + &(self.0[i].scalar_mul(&s));
-            },
-        }
-    }
-}
+// impl MulAssign<ElementaryColumnOp> for FrMatrix {
+//     fn mul_assign(&mut self, rhs: ElementaryColumnOp) {
+//         match rhs {
+//             ElementaryColumnOp::Swap(i, j) => {
+//                 self.0.swap(i, j);
+//             },
+//             ElementaryColumnOp::Scale(s, i) => {
+//                 self.0[i] = self.0[i].scalar_mul(&s);
+//             },
+//             ElementaryColumnOp::AddMultiple(s, i, j) => {
+//                 self.0[j] = &self.0[j] + &(self.0[i].scalar_mul(&s));
+//             },
+//         }
+//     }
+// }
+
+// impl MulAssign<ElementaryColumnOpComposition> for FrMatrix {
+//     fn mul_assign(&mut self, rhs: ElementaryColumnOpComposition) {
+//         for op in rhs.0 {
+//             self.mul_assign(op);
+//         }
+//     }
+// }
 
 impl PartialEq for FrMatrix {
     fn eq(&self, rhs: &Self) -> bool {
