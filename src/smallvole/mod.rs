@@ -2,6 +2,7 @@
 
 use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
+use rand::{rngs::{ThreadRng, StdRng}, SeedableRng, RngCore};
 
 use crate::{Fr, vecccom::{fr_from_be_u64slice_unchecked, expand_seed_to_Fr_vec}};
 
@@ -30,12 +31,12 @@ lazy_static! {
     };
 }
 pub struct ProverSmallVOLEOutputs { 
-    u: Vec<Fr>,
-    v: Vec<Fr>,
+    pub u: Vec<Fr>,
+    pub v: Vec<Fr>,
 }
 pub struct VerifierSmallVOLEOutputs {
-    delta: Fr,
-    q: Vec<Fr>,
+    pub delta: Fr,
+    pub q: Vec<Fr>,
 }
 
 pub struct VOLE;
@@ -62,6 +63,40 @@ impl VOLE {
         VerifierSmallVOLEOutputs { delta, q }
     }
     
+}
+/// Construct many small VOLEs and stack into big matrix. This has both prover and verifier output in plaintext
+/// TODO: Halve communication cost of sharing the seeds by bringing the seed down to 16 bytes
+#[cfg(test)]
+pub struct TestMOLE {
+    pub prover_outputs: Vec<ProverSmallVOLEOutputs>,
+    pub verifier_outputs: Vec<VerifierSmallVOLEOutputs>
+}
+#[cfg(test)]
+impl TestMOLE {
+    /// For security with the rate 1/2 RAAA code, num_voles should not be less than 1024
+    pub fn init(master_seed: [u8; 32], vole_size: usize, num_voles: usize) -> TestMOLE{
+        // let mut seeds = Vec::with_capacity(num_voles);
+        let mut prover_outputs = Vec::with_capacity(num_voles);
+        let mut verifier_outputs = Vec::with_capacity(num_voles);
+        let seed_seed: <StdRng as SeedableRng>::Seed = master_seed;
+        let mut r = StdRng::from_seed(seed_seed);
+        for i in 0..num_voles {
+            let mut seed0 = [0u8; 32];
+            let mut seed1 = [0u8; 32];
+            r.fill_bytes(&mut seed0);
+            r.fill_bytes(&mut seed1);
+            prover_outputs.push(
+                VOLE::prover_outputs(&seed0, &seed1, vole_size)
+            );
+
+            verifier_outputs.push(
+                VOLE::verifier_outputs(&seed0, true, vole_size)
+            )
+            
+        }
+
+        Self { prover_outputs, verifier_outputs }
+    }
 }
 
 #[cfg(test)]

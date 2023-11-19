@@ -466,8 +466,19 @@ impl RAAACode {
         let in2 = Self::interleave(&acc1, &self.permutations[2].0);
         let acc2 = Self::accumulate(&in2);
 
-        todo!("Test this");
         acc2
+    }
+
+    /// Calculates the prover's correction value for a single u vector. 
+    pub fn get_prover_correction(&self, old_u: &FrVec) -> FrVec { 
+        let acc2_inv = Self::accumulate_inverse(&old_u);
+        let in2_inv = Self::interleave(&acc2_inv, &self.permutations[2].1);
+        let acc1_inv = Self::accumulate_inverse(&in2_inv);
+        let in1_inv = Self::interleave(&acc1_inv, &self.permutations[1].1);
+        let acc0_inv = Self::accumulate_inverse(&in1_inv);
+        let in0_inv = Self::interleave(&old_u, &self.permutations[0].1);         
+        let re_inv = Self::repeat_extended_inverse(&in0_inv, self.q);
+        re_inv
     }
 
 }
@@ -476,10 +487,11 @@ mod test {
     use std::{ops::Mul, time::Instant, io::repeat};
 
     use ff::{Field, PrimeField};
+    use itertools::izip;
     use nalgebra::{Matrix2x4, Matrix4x2};
     use rand::rngs::ThreadRng;
 
-    use crate::FrRepr;
+    use crate::{FrRepr, smallvole::{self, VOLE, TestMOLE}};
 
     use super::*;
     #[test]
@@ -543,6 +555,26 @@ mod test {
         assert_eq!(in1, inverted1.0);
     }
     
+    #[test]
+    fn test_prover_correction() {
+        // // Creates a VOLE
+        // let seed0 = [9u8; 32];
+        // let seed1 = [2u8; 32];
+        // let prover_outputs = VOLE::prover_outputs(&seed0, &seed1, 64);
+        // let verifier_outputs = VOLE::verifier_outputs(&seed0, true, 64);
+
+        let test_mole = TestMOLE::init([123u8; 32], 64, 1024);
+
+        // Check the VOLE was done properly
+        assert!(
+            izip!(&test_mole.prover_outputs[69].u, &test_mole.prover_outputs[69].v, &test_mole.verifier_outputs[69].q).all(
+                |(u, v, q)| u.clone() * test_mole.verifier_outputs[69].delta + v == q.clone()
+            )
+        );
+        // Check that correcting makes it lie on the subspace defined by 
+
+
+    }
     // #[test]
     // fn rs_is_vandermonde() {
     //     let g = ReedSolomonCode::construct_generator::<5,3>();
