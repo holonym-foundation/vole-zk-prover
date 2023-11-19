@@ -1,5 +1,6 @@
 //! VOLE with only two options for delta
 
+use blake3::Hasher;
 use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use rand::{rngs::{ThreadRng, StdRng}, SeedableRng, RngCore};
@@ -66,15 +67,17 @@ impl VOLE {
 }
 /// Construct many small VOLEs and stack into big matrix. This has both prover and verifier output in plaintext
 /// TODO: Halve communication cost of sharing the seeds by bringing the seed down to 16 bytes
-#[cfg(test)]
+// #[cfg(test)]
 pub struct TestMOLE {
+    pub prover_commitment: [u8; 32],
     pub prover_outputs: Vec<ProverSmallVOLEOutputs>,
     pub verifier_outputs: Vec<VerifierSmallVOLEOutputs>
 }
-#[cfg(test)]
+// #[cfg(test)]
 impl TestMOLE {
     /// For security with the rate 1/2 RAAA code, num_voles should not be less than 1024
     pub fn init(master_seed: [u8; 32], vole_size: usize, num_voles: usize) -> TestMOLE{
+        let mut hasher = Hasher::new();
         // let mut seeds = Vec::with_capacity(num_voles);
         let mut prover_outputs = Vec::with_capacity(num_voles);
         let mut verifier_outputs = Vec::with_capacity(num_voles);
@@ -83,6 +86,7 @@ impl TestMOLE {
         for i in 0..num_voles {
             let mut seed0 = [0u8; 32];
             let mut seed1 = [0u8; 32];
+            hasher.update(blake3::hash(&[seed0, seed1].concat()).as_bytes());
             r.fill_bytes(&mut seed0);
             r.fill_bytes(&mut seed1);
             prover_outputs.push(
@@ -94,8 +98,8 @@ impl TestMOLE {
             )
             
         }
-
-        Self { prover_outputs, verifier_outputs }
+        let prover_commitment = hasher.finalize();//.as_bytes();
+        Self { prover_outputs, verifier_outputs, prover_commitment: *prover_commitment.as_bytes() }
     }
 }
 

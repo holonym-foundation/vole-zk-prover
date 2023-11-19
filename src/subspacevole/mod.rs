@@ -563,7 +563,7 @@ mod test {
         // let prover_outputs = VOLE::prover_outputs(&seed0, &seed1, 64);
         // let verifier_outputs = VOLE::verifier_outputs(&seed0, true, 64);
 
-        let test_mole = TestMOLE::init([123u8; 32], 64, 1024);
+        let test_mole = TestMOLE::init([123u8; 32], 1024, 1);
 
         // Check the VOLE was done properly
         assert!(
@@ -571,7 +571,8 @@ mod test {
                 |(u, v, q)| u.clone() * test_mole.verifier_outputs[69].delta + v == q.clone()
             )
         );
-        // Check that correcting makes it lie on the subspace defined by 
+
+        // let vole_one = 
 
 
     }

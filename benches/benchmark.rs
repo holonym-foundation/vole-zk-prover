@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::{Field, PrimeField};
 use nalgebra::SMatrix;
 use rand::{rngs::ThreadRng, Rng};
-use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::VOLE, Fr, FrRepr, FrVec, DotProduct};
+use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct};
 // use volonym::rand_fr_vec;
 
 // fn matmul<const N: usize>() {
@@ -54,12 +54,17 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let mut repr = [0u8; 32];
     ThreadRng::default().fill(&mut repr);
-    group.sample_size(100);
+    group.sample_size(10);
 
-
+    group.bench_function("512x1024 MOLE", |b|b.iter(|| TestMOLE::init(
+        black_box([123u8; 32]), 
+        black_box(512), 
+        black_box(1024)
+    )));
+    // group.bench_function("Tc-1 1024x1024", |b: &mut criterion::Bencher<'_>|b.iter(|| RAA))
     // group.bench_function("add", |b|b.iter(|| black_box(a_) + black_box(b_)));
     // group.bench_function("mul", |b|b.iter(|| black_box(a_)* black_box(b_)));
-    group.bench_function("Creating a Fr from a repr", |b|b.iter(||Fr::from_repr(black_box(FrRepr(repr)))));
+    // group.bench_function("Creating a Fr from a repr", |b|b.iter(||Fr::from_repr(black_box(FrRepr(repr)))));
     // group.bench_function("Multiplying two 512x512 matrices", |b|b.iter(||matmul::<512>()));
     // group.bench_function("1024 length nalgebra dot", |b|b.iter(||matrix_row_col_dot(black_box(&x), black_box(&y))));
     // group.bench_function("1024 length simple dot", |b|b.iter(||naive_dot(&nx, &ny)));
@@ -70,7 +75,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("Constructing 64 x 64 systematic Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_systematic_generator::<64, 64>())); // 256 x 256 takes 1.4s
     // group.bench_function("Constructing 288 x 256 Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_tc_inverse::<288>()));
 
-    group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
+    // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
     // // group.bench_function("expand to 2^10 Frs; optimized", |b|b.iter(move ||expand_seed_to_Fr_vec_faster(black_box(seed), 1024)));
 
     // group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
