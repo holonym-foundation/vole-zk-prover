@@ -4,6 +4,7 @@ use std::usize;
 
 use ff::PrimeField;
 use ff::derive::rand_core::le;
+use lazy_static::lazy_static;
 use nalgebra::{self, SMatrix, };
 use ndarray::FixedInitializer;
 use polynomen::Poly;
@@ -12,6 +13,9 @@ use rand::rngs::ThreadRng;
 use crate::{Fr, FrRepr, DotProduct, FrVec, FrMatrix};
 use crate::ff::Field;
 
+lazy_static! {
+    // pub static ref RAAA_CODE: RAAACode = RAAACode::deserialize(bytes)
+}
 
 // pub fn sender_correction<const N: usize, const K: usize, const L: usize, const NminusK: usize>(U: &SMatrix<Fr, L, N>) -> SMatrix<Fr, N, NminusK> {
 //     assert!(NminusK == N - K, "NminusK must be N - K");
@@ -269,19 +273,105 @@ pub fn lagrange_basis_coeffs(idx: u64, deg: u64) -> Vec<Fr> {
 //     }
 // }
 
-struct RAAACode;
+///RepetitionRate should be 
+struct RAAACode {
+    /// Forward and reverse permutations required for interleave and inverting interleave each time
+    /// In order of when the interleaves are applied (e.g. 0th is after repetition and 2nd is before final accumulation)
+    pub permutations: [(Vec<usize>, Vec<usize>); 3],
+    /// Codeword length over dimension (rate's inverse). Default 2
+    /// Exercise caution when changing q as this will affect the minimum distance and therefore security. Default q was selected for roughtly 128 bits of security at block length Fr,
+    /// But THIS SECURITY CALCULATION WAS NOT DONE EXTREMELY RIGOROUSLY, rather by glancing at charts on "Coding Theorems for Repeat Multiple
+    /// Accumulate Codes" by Kliewer et al
+    /// A punctured code will likely perform better for the same security; the standard, unpuctured 1/2 rate RAAA code is used for its simplicity before choosing better codes.
+    /// Furthermore, I have not sufficiently analyzed the security of using these binary RAAA codes on prime fields but 
+    /// I would imagine it is fine as prime fields do not seem to make outputting a low-hamming-weight vector (and thus reducing distance of the code) any easier than doing so would be in GF2.
+    pub q: usize
+}
 impl RAAACode {
     pub fn repeat(input: &FrVec, num_repeats: usize) -> FrVec {
-        let mut out = Vec::with_capacity(num_repeats);
+        let mut out = Vec::with_capacity(num_repeats * input.0.len());
         for _ in 0..num_repeats {
             out.append(&mut input.0.clone());
         }
         FrVec(out)
     }
-    pub fn repeat_inverse(input: &FrVec, num_repeats: usize) -> FrVec {
-        assert!(input.0.len() % num_repeats == 0, "input length must be divisible by num_repeats");
-        let out_len = input.0.len() / num_repeats;
-        FrVec(input.0[0..out_len].to_vec())
+    // pub fn repeat_inverse(input: &FrVec, num_repeats: usize) -> FrVec {
+    //     assert!(input.0.len() % num_repeats == 0, "input length must be divisible by num_repeats");
+    //     let out_len = input.0.len() / num_repeats;
+    //     FrVec(input.0[0..out_len].to_vec())
+    // }
+    
+    /// Represents an invertible repetition matrix with extra rows so it's nxn rather than kxn
+    /// The rows are choosen to be linearly independent and sparse so it is invertible and easy to invert
+    /// Since repetition matrix is just 
+    /// [ 1 0 0 0 1 0 0 0 ]
+    /// [ 0 1 0 0 0 1 0 0 ]
+    /// [ 0 0 1 0 0 0 1 0 ]
+    /// [ 0 0 0 1 0 0 0 1 ]
+    /// Extended reptition can be simply
+    /// [ 1 0 0 0 1 0 0 0 ]
+    /// [ 0 1 0 0 0 1 0 0 ]
+    /// [ 0 0 1 0 0 0 1 0 ]
+    /// [ 0 0 0 1 0 0 0 1 ]
+    /// [ 0 0 0 0 1 0 0 0 ]
+    /// [ 0 0 0 0 0 1 0 0 ]
+    /// [ 0 0 0 0 0 0 1 0 ]
+    /// [ 0 0 0 0 0 0 0 1 ]
+    /// with its inverse sparsely described as 
+    /// [ 1 0 0 0 -1 0 0 0 ]
+    /// [ 0 1 0 0 0 -1 0 0 ]
+    /// [ 0 0 1 0 0 0 -1 0 ]
+    /// [ 0 0 0 1 0 0 0 -1 ]
+    /// [ 0 0 0 0 1 0 0 0 ]
+    /// [ 0 0 0 0 0 1 0 0 ]
+    /// [ 0 0 0 0 0 0 1 0 ]
+    /// [ 0 0 0 0 0 0 0 1 ]
+    /// The sparse desciptions of these are respectively "clone the input vector and add its latter half with its latter half + first half"
+    /// and "clone the input vector and replace its latter half with its latter half - first half"
+    ///
+    /// Exmaple for q = 3:
+    /// [ 1 0 0 1 0 0 1 0 0 ]
+    /// [ 0 1 0 0 1 0 0 1 0 ]
+    /// [ 0 0 1 0 0 1 0 0 1 ]
+    /// 
+    /// extended = 
+    /// [ 1 0 0 1 0 0 1 0 0 ]
+    /// [ 0 1 0 0 1 0 0 1 0 ]
+    /// [ 0 0 1 0 0 1 0 0 1 ]
+    /// [ 0 0 0 1 0 0 0 0 0 ]
+    /// [ 0 0 0 0 1 0 0 0 0 ]
+    /// [ 0 0 0 0 0 1 0 0 0 ]
+    /// [ 0 0 0 0 0 0 1 0 0 ]
+    /// [ 0 0 0 0 0 0 0 1 0 ]
+    /// [ 0 0 0 0 0 0 0 0 1 ]
+    /// 
+    ///  extended and inverted = 
+    /// [ 1 0 0 -1 0 0 -1 0 0 ]
+    /// [ 0 1 0 0 -1 0 0 -1 0 ]
+    /// [ 0 0 1 0 0 -1 0 0 -1 ]
+    /// [ 0 0 0 1 0 0 0 0 0 ]
+    /// [ 0 0 0 0 1 0 0 0 0 ]
+    /// [ 0 0 0 0 0 1 0 0 0 ]
+    /// [ 0 0 0 0 0 0 1 0 0 ]
+    /// [ 0 0 0 0 0 0 0 1 0 ]
+    /// [ 0 0 0 0 0 0 0 0 1 ]
+    /// The sparse description of these matrices are "clone the input vector. Let its 2nd and 3rd thirds += its first third"
+    /// And "clone the input vector. Let its 2nd and 3rd thirds -= its first thirds."
+    pub fn repeat_extended(input: &FrVec, q: usize) -> FrVec {
+        let len = input.0.len();
+        assert!(len % q == 0, "length must be divisible by q");
+        let section_len = len / q;
+        let zeroth_section = FrVec(input.0[0..section_len].to_vec());
+        let mut out = Vec::with_capacity(len);
+        out.append(&mut zeroth_section.0.clone());
+        for i in 1..q {
+            let start_idx = section_len * i;
+            let mut new = &mut (&zeroth_section + 
+                        &FrVec(input.0[start_idx..start_idx+section_len].to_vec()));
+            out.append(&mut new.0);
+        }
+        FrVec((out))
+
     }
 
     /// Permutation is not checked to be uniform. It simply contains a vec of new indices
@@ -332,10 +422,40 @@ impl RAAACode {
         (forward, backward)
     }
 
+    /// Creates an RAAA code of the default parameters 
+    pub fn rand_default() -> RAAACode {
+        let permutations = [
+            RAAACode::random_interleave_permutations(1024),
+            RAAACode::random_interleave_permutations(1024),
+            RAAACode::random_interleave_permutations(1024),
+        ];
+        RAAACode { permutations, q: 2 }
+    }
+    pub fn serialize<T: AsRef<[u8]>>(&self) -> T {
+        todo!()
+    }
+    pub fn deserialize<T>(bytes: T) -> Self{
+        todo!()
+    }
+
+    /// Converts a vector to its codeword
+    pub fn encode(&self, vec: &FrVec) -> FrVec {
+        let repeated = Self::repeat(vec, self.q);
+        let in0 = Self::interleave(&repeated, &self.permutations[0].0);
+        let acc0 = Self::accumulate(&in0);
+        let in1 = Self::interleave(&acc0, &self.permutations[1].0);
+        let acc1 = Self::accumulate(&in1);
+        let in2 = Self::interleave(&acc1, &self.permutations[2].0);
+        let acc2 = Self::accumulate(&in2);
+
+        todo!("Test this");
+        acc2
+    }
+
 }
 #[cfg(test)]
 mod test {
-    use std::{ops::Mul, time::Instant};
+    use std::{ops::Mul, time::Instant, io::repeat};
 
     use ff::{Field, PrimeField};
     use nalgebra::{Matrix2x4, Matrix4x2};
@@ -359,6 +479,33 @@ mod test {
             &inverse_permuted
         );
         assert_eq!(input.0, inverse_permuted.0); // Can impl eq for FrVec some time
+    }
+    #[test]
+    fn test_accumulate_and_inverse() {
+        let test0 = FrVec(vec![Fr::ZERO; 5]);
+        let test1 = FrVec(vec![Fr::ONE; 5]);
+        let test2 = FrVec(vec![Fr::ZERO, Fr::ONE, Fr::from_u128(2), Fr::from_u128(3)]);
+        let test3 = FrVec(vec![Fr::ZERO, Fr::from_u128(2), Fr::ONE, Fr::from_u128(3)]);
+
+        assert_eq!(RAAACode::accumulate(&test0).0, vec![Fr::ZERO; 5]);
+        assert_eq!(RAAACode::accumulate(&test1).0, vec![Fr::ONE, Fr::from_u128(2), Fr::from_u128(3), Fr::from_u128(4), Fr::from_u128(5)]);
+        assert_eq!(RAAACode::accumulate(&test2).0, vec![Fr::ZERO, Fr::ONE, Fr::from_u128(3), Fr::from_u128(6), ]);
+        assert_eq!(RAAACode::accumulate(&test3).0, vec![Fr::ZERO, Fr::from_u128(2), Fr::from_u128(3), Fr::from_u128(6)]);
+        vec![test0, test1, test2, test3].iter().for_each(|test|{
+            let should_be_test = RAAACode::accumulate_inverse(&RAAACode::accumulate(test));
+            assert_eq!(test.0, should_be_test.0);
+        })
+    }
+    #[test]
+    fn test_repeat_and_inverse() {
+        let test0 = FrVec(vec![Fr::ZERO]);
+        let test1 = FrVec(vec![Fr::ONE]);
+        let test2 = FrVec(vec![Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456)]);
+        assert_eq!(RAAACode::repeat(&test0, 2).0, vec![Fr::ZERO, Fr::ZERO]);
+        assert_eq!(RAAACode::repeat(&test0, 3).0, vec![Fr::ZERO, Fr::ZERO, Fr::ZERO]);
+        assert_eq!(RAAACode::repeat(&test1, 2).0, vec![Fr::ONE, Fr::ONE]);
+        assert_eq!(RAAACode::repeat(&test1, 3).0, vec![Fr::ONE, Fr::ONE, Fr::ONE]);
+        assert_eq!(RAAACode::repeat(&test2, 2).0, vec![Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456), Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456)]);
     }
     // #[test]
     // fn rs_is_vandermonde() {

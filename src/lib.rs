@@ -21,6 +21,7 @@ pub struct Fr([u64; 4]);
 
 #[derive(Debug, Clone)]
 pub struct FrVec(pub Vec<Fr>);
+
 impl Mul for FrVec {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
@@ -35,7 +36,12 @@ impl<'a, 'b> Mul<&'b FrVec> for &'a FrVec {
         FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).collect())
     }
 }
-
+impl Add for FrVec {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        Self(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
+    }
+}
 impl<'a, 'b> Add<&'b FrVec> for &'a FrVec {
     type Output = FrVec;
     fn add(self, rhs: &'b FrVec) -> FrVec {
