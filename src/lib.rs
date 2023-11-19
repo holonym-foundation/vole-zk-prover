@@ -138,9 +138,9 @@ impl FrVec {
 }
 
 #[derive(Debug, Clone)]
-pub struct FrMatrix(Vec<FrVec>);
+pub struct FrMatrix(pub Vec<FrVec>);
 impl FrMatrix {
-    pub fn transpose(&self ) -> Self {
+    pub fn transpose(&self) -> Self {
         let outer_len = self.0.len();
         let inner_len  = self.0[0].0.len();
         let mut res = Vec::with_capacity(inner_len);

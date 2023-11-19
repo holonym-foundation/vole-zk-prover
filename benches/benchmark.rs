@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::{Field, PrimeField};
 use nalgebra::SMatrix;
 use rand::{rngs::ThreadRng, Rng};
-use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode};
+use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode, FrMatrix};
 // use volonym::rand_fr_vec;
 
 // fn matmul<const N: usize>() {
@@ -52,6 +52,11 @@ fn criterion_benchmark(c: &mut Criterion) {
     let a_ = Fr::random(&mut ThreadRng::default());
     let b_ = Fr::random(&mut ThreadRng::default());
 
+    let fr_matrix = FrMatrix(
+        (0..1024).map(|_|
+            FrVec((0..1024).map(|_|Fr::random(&mut ThreadRng::default())).collect::<Vec<_>>())
+        ).collect()
+    );
     let mut repr = [0u8; 32];
     ThreadRng::default().fill(&mut repr);
     group.sample_size(10);
@@ -76,8 +81,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("Constructing 64 x 64 systematic Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_systematic_generator::<64, 64>())); // 256 x 256 takes 1.4s
     // group.bench_function("Constructing 288 x 256 Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_tc_inverse::<288>()));
 
-    group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
-
+    // group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
+    group.bench_function("1024 x 1024 transpose", |b|b.iter(||black_box(fr_matrix.clone()).transpose()));
     // group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
     // // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed()), 10)));
     // // c.bench_function("1048576 random Frs", |b| b.iter(|| rand_fr_vec(black_box(20))));
