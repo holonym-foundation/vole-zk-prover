@@ -1,16 +1,7 @@
-use std::ops::{Add, Mul, Neg, MulAssign};
-use std::time::Instant;
 use std::usize;
-
-use ff::PrimeField;
-use ff::derive::rand_core::le;
-use lazy_static::lazy_static;
-use nalgebra::{self, SMatrix, };
-use ndarray::FixedInitializer;
-use polynomen::Poly;
 use rand::Rng;
 use rand::rngs::ThreadRng;
-use crate::{Fr, FrRepr, DotProduct, FrVec, FrMatrix};
+use crate::{Fr, FrVec, FrMatrix};
 use crate::ff::Field;
 
 // lazy_static! {
@@ -204,7 +195,7 @@ impl RAAACode {
     pub fn serialize<T: AsRef<[u8]>>(&self) -> T {
         todo!()
     }
-    pub fn deserialize<T>(bytes: T) -> Self{
+    pub fn deserialize<T>(bytes: T) -> Self {
         todo!()
     }
 
