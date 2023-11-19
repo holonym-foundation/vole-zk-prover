@@ -491,6 +491,10 @@ impl RAAACode {
         acc2
     }
 
+    pub fn batch_encode_extended(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
+        matrix.iter().map(|x|self.encode_extended(x)).collect()
+    }
+
     /// Returns a single u vector multiplied by the Tc^-1 matrix (the extended generator matrix that is invertible). 
     fn mul_vec_by_extended_inverse(&self, u: &FrVec) -> FrVec { 
         let acc2_inv = Self::accumulate_inverse(&u);
@@ -500,27 +504,31 @@ impl RAAACode {
         let acc0_inv = Self::accumulate_inverse(&in1_inv);
         let in0_inv = Self::interleave(&acc0_inv, &self.permutations[0].1);         
         let re_inv = Self::repeat_extended_inverse(&in0_inv, self.q);
-        
+
         re_inv
     }
 
     /// Calculates the prover's correction value for the whole U matrix
-    fn mul_matrix_by_extended_inverse(&self, old_us: Vec<&FrVec>) -> Vec<FrVec> {
+    fn mul_matrix_by_extended_inverse(&self, old_us: &Vec<FrVec>) -> Vec<FrVec> {
         old_us.iter().map(|u|self.mul_vec_by_extended_inverse(u)).collect()
     }
 
-    /// Returns the correction value to send to verifier
+    /// Returns (U, C) where U is the prover's correct U and C the correction value to send to verifier
     /// k is the dimension of the code
-    pub fn get_prover_public_correction(&self, old_us: Vec<&FrVec>) -> Vec<FrVec> {
+    pub fn get_prover_correction(&self, old_us: &Vec<FrVec>) -> (Vec<FrVec>, Vec<FrVec>) {
         let l = old_us[0].0.len();
         assert!(l % self.q == 0, "block length is not a product of q");
         let start_idx = l / self.q;
         let full_size = self.mul_matrix_by_extended_inverse(old_us);
-        full_size.iter().map(|u|FrVec(u.0[start_idx..].to_vec())).collect()
+        
+        (
+            full_size.iter().map(|u|FrVec(u.0[0..start_idx].to_vec())).collect(),
+            full_size.iter().map(|u|FrVec(u.0[start_idx..].to_vec())).collect()
+        )
     }
 
-    /// Adds the correction to the 
-    pub fn add_correction(&self, old_qs: Vec<&FrVec>, correction: Vec<&FrVec>) -> Vec<FrVec> {
+    /// Corrects the verifier's Q matrix give the prover's correction
+    pub fn correct_verifier_qs(&self, old_qs: &Vec<FrVec>, deltas: &FrVec, correction: &Vec<FrVec>) -> Vec<FrVec> {
         // Concatenate zero matrix with C as in the subsapace VOLE protocol:
         let l = old_qs[0].0.len();
         assert!(l % self.q == 0, "block length is not a product of q");
@@ -532,9 +540,13 @@ impl RAAACode {
             out.append(&mut correction[i].0.clone());
             FrVec(out)
         }).collect::<Vec<FrVec>>();
-        // let times_extended_generator = RAAACode::ex
-        todo!()
-
+        
+        let times_extended_generator = self.batch_encode_extended(&zeroes_cons_c);
+        let times_deltas = times_extended_generator.iter().map(|x| {
+            x * deltas
+            //x.0.iter().zip(deltas.0.iter()).map(|(a, b)| a * b)
+        }).collect::<Vec<FrVec>>();
+        old_qs.iter().zip(&times_deltas).map(|(q, t)|q - t).collect()
     }
 }
 #[cfg(test)]
@@ -622,15 +634,7 @@ mod test {
     
     #[test]
     fn test_prover_correction() {
-        // // Creates a VOLE
-        // let seed0 = [9u8; 32];
-        // let seed1 = [2u8; 32];
-        // let prover_outputs = VOLE::prover_outputs(&seed0, &seed1, 64);
-        // let verifier_outputs = VOLE::verifier_outputs(&seed0, true, 64);
-
-        let test_mole = TestMOLE::init([123u8; 32], 1024, 16);
-
-
+        let test_mole = TestMOLE::init([123u8; 32], 16, 1024);
         // Check (at least one of the) VOLEs (and therefore likely all of them) was successful
         assert!(
             izip!(&test_mole.prover_outputs[7].u, &test_mole.prover_outputs[7].v, &test_mole.verifier_outputs[7].q).all(
@@ -638,10 +642,26 @@ mod test {
             )
         );
 
-        // let test_mole =
+        let code = RAAACode::rand_default();
+        println!("single u length per VOLE {:?}\nNumber of deltas {:?}\n Single q length per VOLE{:?}. ", &test_mole.prover_outputs[0].u.len(), &test_mole.verifier_outputs.len(), &test_mole.verifier_outputs[0].q.len());
+
+        let (new_us, correction) = code.get_prover_correction(
+            &test_mole.prover_outputs.iter().map(|o|FrVec(o.u.clone())).collect::<Vec<FrVec>>()
+        );
+
+        // let deltas = FrVec(test_mole.verifier_outputs.iter().map(|o|o.delta.clone()).collect());
+
+        // let new_qs = code.correct_verifier_qs(
+        //     &test_mole.verifier_outputs.iter().map(|o|FrVec(o.q.clone())).collect::<Vec<FrVec>>(),
+        //     &deltas,
+        //     &correction
+        // );
+
+        // println!("the lengths of the vecs {:?}. {:?}. {:?}. ", &new_us[15].0.len(), deltas.0.len(), new_qs[15].0.len());
+        // // Check that (at least one of the) subspace VOLEs (and therefore likely all of them) is a successfull subspace VOLE:
+        // assert!(code.encode(&new_us[15]) * deltas == new_qs[15]);
+
         todo!()
-
-
     }
     // #[test]
     // fn rs_is_vandermonde() {
