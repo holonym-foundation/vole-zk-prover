@@ -274,7 +274,7 @@ pub fn lagrange_basis_coeffs(idx: u64, deg: u64) -> Vec<Fr> {
 // }
 
 ///RepetitionRate should be 
-struct RAAACode {
+pub struct RAAACode {
     /// Forward and reverse permutations required for interleave and inverting interleave each time
     /// In order of when the interleaves are applied (e.g. 0th is after repetition and 2nd is before final accumulation)
     pub permutations: [(Vec<usize>, Vec<usize>); 3],
@@ -563,16 +563,15 @@ mod test {
         // let prover_outputs = VOLE::prover_outputs(&seed0, &seed1, 64);
         // let verifier_outputs = VOLE::verifier_outputs(&seed0, true, 64);
 
-        let test_mole = TestMOLE::init([123u8; 32], 1024, 1);
+        let test_mole = TestMOLE::init([123u8; 32], 1024, 16);
 
-        // Check the VOLE was done properly
+
+        // Check (at least one of the) VOLEs (and therefore likely all of them) was successful
         assert!(
-            izip!(&test_mole.prover_outputs[69].u, &test_mole.prover_outputs[69].v, &test_mole.verifier_outputs[69].q).all(
-                |(u, v, q)| u.clone() * test_mole.verifier_outputs[69].delta + v == q.clone()
+            izip!(&test_mole.prover_outputs[7].u, &test_mole.prover_outputs[7].v, &test_mole.verifier_outputs[7].q).all(
+                |(u, v, q)| u.clone() * test_mole.verifier_outputs[7].delta + v == q.clone()
             )
         );
-
-        // let vole_one = 
 
 
     }

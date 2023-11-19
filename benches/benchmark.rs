@@ -2,7 +2,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::{Field, PrimeField};
 use nalgebra::SMatrix;
 use rand::{rngs::ThreadRng, Rng};
-use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct};
+use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode};
 // use volonym::rand_fr_vec;
 
 // fn matmul<const N: usize>() {
@@ -61,7 +61,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         black_box(512), 
         black_box(1024)
     )));
-    // group.bench_function("Tc-1 1024x1024", |b: &mut criterion::Bencher<'_>|b.iter(|| RAA))
+    
+    group.bench_function("Tc-1 times 1024-bit vector", |b|b.iter(|| RAAACode::repeat_extended_inverse(black_box(&FrVec(nx.clone())), 2)));
     // group.bench_function("add", |b|b.iter(|| black_box(a_) + black_box(b_)));
     // group.bench_function("mul", |b|b.iter(|| black_box(a_)* black_box(b_)));
     // group.bench_function("Creating a Fr from a repr", |b|b.iter(||Fr::from_repr(black_box(FrRepr(repr)))));
