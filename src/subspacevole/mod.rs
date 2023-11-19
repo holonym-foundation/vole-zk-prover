@@ -366,12 +366,30 @@ impl RAAACode {
         out.append(&mut zeroth_section.0.clone());
         for i in 1..q {
             let start_idx = section_len * i;
-            let mut new = &mut (&zeroth_section + 
+            let new = &mut (&zeroth_section + 
                         &FrVec(input.0[start_idx..start_idx+section_len].to_vec()));
             out.append(&mut new.0);
         }
         FrVec((out))
 
+    }
+
+    pub fn repeat_extended_inverse(input: &FrVec, q: usize) -> FrVec {
+        let len = input.0.len();
+        assert!(len % q == 0, "length must be divisible by q");
+        let section_len = len / q;
+        let zeroth_section = FrVec(input.0[0..section_len].to_vec());
+        let mut out = Vec::with_capacity(len);
+        out.append(&mut zeroth_section.0.clone());
+        for i in 1..q {
+            let start_idx = section_len * i;
+            let new = &mut (
+                &FrVec(input.0[start_idx..start_idx+section_len].to_vec()) - 
+                &zeroth_section
+            );
+            out.append(&mut new.0);
+        }
+        FrVec(out)
     }
 
     /// Permutation is not checked to be uniform. It simply contains a vec of new indices
@@ -478,7 +496,7 @@ mod test {
             &permuted,
             &inverse_permuted
         );
-        assert_eq!(input.0, inverse_permuted.0); // Can impl eq for FrVec some time
+        assert_eq!(input, inverse_permuted);
     }
     #[test]
     fn test_accumulate_and_inverse() {
@@ -497,7 +515,7 @@ mod test {
         })
     }
     #[test]
-    fn test_repeat_and_inverse() {
+    fn test_repeat() {
         let test0 = FrVec(vec![Fr::ZERO]);
         let test1 = FrVec(vec![Fr::ONE]);
         let test2 = FrVec(vec![Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456)]);
@@ -507,6 +525,24 @@ mod test {
         assert_eq!(RAAACode::repeat(&test1, 3).0, vec![Fr::ONE, Fr::ONE, Fr::ONE]);
         assert_eq!(RAAACode::repeat(&test2, 2).0, vec![Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456), Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456)]);
     }
+
+    #[test]
+    /// Tests the extended repetition matrix and its inverse
+    /// TODO: more test cases
+    fn test_repeat_extend_and_inverse() {
+        let in0 = vec![Fr::from_u128(0), Fr::from_u128(1), Fr::from_u128(2), Fr::from_u128(3), Fr::from_u128(4), Fr::from_u128(5)];
+        let in1 = vec![Fr::from_u128(5), Fr::from_u128(10), Fr::from_u128(15), Fr::from_u128(20), Fr::from_u128(25), Fr::from_u128(30)];
+
+        let out0 = RAAACode::repeat_extended(&FrVec(in0.clone()), 2);
+        let out1 = RAAACode::repeat_extended(&FrVec(in1.clone()),3);
+        
+        let inverted0 = RAAACode::repeat_extended_inverse(&out0, 2);
+        let inverted1 = RAAACode::repeat_extended_inverse(&out1,3);
+
+        assert_eq!(in0, inverted0.0);
+        assert_eq!(in1, inverted1.0);
+    }
+    
     // #[test]
     // fn rs_is_vandermonde() {
     //     let g = ReedSolomonCode::construct_generator::<5,3>();
@@ -554,29 +590,6 @@ mod test {
     //     todo!("alternatively, check systematic form spans the same subspace")
     // }
     
-    #[test]
-    // TODO: combine repeating and accuumulating into one matrix / function
-    fn test_repeat() {
-        todo!()
-    }
-    fn test_repeat_inverse() {
-        todo!()
-    }
-    fn test_interelave() {
-        todo!()
-    }
-    fn test_interleave_inverse() {
-        todo!()
-    }
-    #[test]
-    fn test_accumulate() {
-        todo!()
-    }
-    #[test]
-    fn test_accumulate_inverse() {
-        todo!()
-    }
-
     #[test]
     fn asdf() {
         // let start = Instant::now();
