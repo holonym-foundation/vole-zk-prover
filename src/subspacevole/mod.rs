@@ -449,6 +449,15 @@ impl RAAACode {
         ];
         RAAACode { permutations, q: 2 }
     }
+    /// Block size under roughly 1024 for current code is unsafe 
+    pub fn rand_with_parameters(block_size: usize, q: usize) -> Self {
+        let permutations = [
+            RAAACode::random_interleave_permutations(block_size),
+            RAAACode::random_interleave_permutations(block_size),
+            RAAACode::random_interleave_permutations(block_size),
+        ];
+        RAAACode { permutations, q }
+    }
     pub fn serialize<T: AsRef<[u8]>>(&self) -> T {
         todo!()
     }
@@ -469,18 +478,64 @@ impl RAAACode {
         acc2
     }
 
-    /// Calculates the prover's correction value for a single u vector. 
-    pub fn get_prover_correction(&self, old_u: &FrVec) -> FrVec { 
-        let acc2_inv = Self::accumulate_inverse(&old_u);
+    /// Multiplies a single vector by the Tc matrix, the extended codeword generator to be invertible
+    pub fn encode_extended(&self, vec: &FrVec) -> FrVec {
+        let repeated = Self::repeat_extended(vec, self.q);
+        let in0 = Self::interleave(&repeated, &self.permutations[0].0);
+        let acc0 = Self::accumulate(&in0);
+        let in1 = Self::interleave(&acc0, &self.permutations[1].0);
+        let acc1 = Self::accumulate(&in1);
+        let in2 = Self::interleave(&acc1, &self.permutations[2].0);
+        let acc2 = Self::accumulate(&in2);
+
+        acc2
+    }
+
+    /// Returns a single u vector multiplied by the Tc^-1 matrix (the extended generator matrix that is invertible). 
+    fn mul_vec_by_extended_inverse(&self, u: &FrVec) -> FrVec { 
+        let acc2_inv = Self::accumulate_inverse(&u);
         let in2_inv = Self::interleave(&acc2_inv, &self.permutations[2].1);
         let acc1_inv = Self::accumulate_inverse(&in2_inv);
         let in1_inv = Self::interleave(&acc1_inv, &self.permutations[1].1);
         let acc0_inv = Self::accumulate_inverse(&in1_inv);
-        let in0_inv = Self::interleave(&old_u, &self.permutations[0].1);         
+        let in0_inv = Self::interleave(&acc0_inv, &self.permutations[0].1);         
         let re_inv = Self::repeat_extended_inverse(&in0_inv, self.q);
+        
         re_inv
     }
 
+    /// Calculates the prover's correction value for the whole U matrix
+    fn mul_matrix_by_extended_inverse(&self, old_us: Vec<&FrVec>) -> Vec<FrVec> {
+        old_us.iter().map(|u|self.mul_vec_by_extended_inverse(u)).collect()
+    }
+
+    /// Returns the correction value to send to verifier
+    /// k is the dimension of the code
+    pub fn get_prover_public_correction(&self, old_us: Vec<&FrVec>) -> Vec<FrVec> {
+        let l = old_us[0].0.len();
+        assert!(l % self.q == 0, "block length is not a product of q");
+        let start_idx = l / self.q;
+        let full_size = self.mul_matrix_by_extended_inverse(old_us);
+        full_size.iter().map(|u|FrVec(u.0[start_idx..].to_vec())).collect()
+    }
+
+    /// Adds the correction to the 
+    pub fn add_correction(&self, old_qs: Vec<&FrVec>, correction: Vec<&FrVec>) -> Vec<FrVec> {
+        // Concatenate zero matrix with C as in the subsapace VOLE protocol:
+        let l = old_qs[0].0.len();
+        assert!(l % self.q == 0, "block length is not a product of q");
+        let correction_len = correction[0].0.len();
+        let zero_len = l - correction_len;
+        let zeroes_cons_c = (0..old_qs.len()).map(|i|{
+            let mut out = Vec::with_capacity(l);
+            out.append(&mut vec![Fr::ZERO; zero_len]);
+            out.append(&mut correction[i].0.clone());
+            FrVec(out)
+        }).collect::<Vec<FrVec>>();
+        // let times_extended_generator = RAAACode::ex
+        todo!()
+
+    }
 }
 #[cfg(test)]
 mod test {
@@ -554,6 +609,16 @@ mod test {
         assert_eq!(in0, inverted0.0);
         assert_eq!(in1, inverted1.0);
     }
+
+    // TODO comprehesnvie test cases
+    #[test]
+    fn test_extended_encode() {
+        let input = vec![Fr::from_u128(1), Fr::from_u128(5), Fr::from_u128(10), Fr::from_u128(0)];
+        let code = RAAACode::rand_with_parameters(4, 2);
+        let codeword = code.encode_extended(&FrVec(input.clone()));
+        let inverse = code.mul_vec_by_extended_inverse(&codeword);
+        assert_eq!(input, inverse.0);
+    }
     
     #[test]
     fn test_prover_correction() {
@@ -572,6 +637,9 @@ mod test {
                 |(u, v, q)| u.clone() * test_mole.verifier_outputs[7].delta + v == q.clone()
             )
         );
+
+        // let test_mole =
+        todo!()
 
 
     }

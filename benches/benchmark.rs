@@ -56,13 +56,13 @@ fn criterion_benchmark(c: &mut Criterion) {
     ThreadRng::default().fill(&mut repr);
     group.sample_size(10);
 
-    group.bench_function("512x1024 MOLE", |b|b.iter(|| TestMOLE::init(
-        black_box([123u8; 32]), 
-        black_box(512), 
-        black_box(1024)
-    )));
+    // group.bench_function("512x1024 MOLE", |b|b.iter(|| TestMOLE::init(
+    //     black_box([123u8; 32]), 
+    //     black_box(512), 
+    //     black_box(1024)
+    // )));
     
-    group.bench_function("Tc-1 times 1024-bit vector", |b|b.iter(|| RAAACode::repeat_extended_inverse(black_box(&FrVec(nx.clone())), 2)));
+    // group.bench_function("Tc-1 times 1024-bit vector", |b|b.iter(|| RAAACode::repeat_extended_inverse(black_box(&FrVec(nx.clone())), 2)));
     // group.bench_function("add", |b|b.iter(|| black_box(a_) + black_box(b_)));
     // group.bench_function("mul", |b|b.iter(|| black_box(a_)* black_box(b_)));
     // group.bench_function("Creating a Fr from a repr", |b|b.iter(||Fr::from_repr(black_box(FrRepr(repr)))));
@@ -76,8 +76,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("Constructing 64 x 64 systematic Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_systematic_generator::<64, 64>())); // 256 x 256 takes 1.4s
     // group.bench_function("Constructing 288 x 256 Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_tc_inverse::<288>()));
 
-    // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
-    // // group.bench_function("expand to 2^10 Frs; optimized", |b|b.iter(move ||expand_seed_to_Fr_vec_faster(black_box(seed), 1024)));
+    group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
 
     // group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
     // // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed()), 10)));
