@@ -1,3 +1,5 @@
+pub mod zkp;
+pub mod vith;
 pub mod subspacevole;
 pub mod smallvole;
 pub mod vecccom;
@@ -6,6 +8,7 @@ use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::O
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
+use subspacevole::RAAACode;
 // use subspacevole::{ElementaryColumnOp, ElementaryColumnOpComposition};
 // use num_traits::Zero;
 #[macro_use]
@@ -182,6 +185,15 @@ impl FrMatrix {
 //     }
 // }
 
+impl<'a, 'b> Mul<&'b FrVec> for &'a FrMatrix {
+    type Output = FrVec;
+    fn mul(self, rhs: &'b FrVec) -> FrVec {
+        FrVec(
+            self.0.iter().map(|vec| vec.dot(rhs)).collect()
+        )
+    }
+}
+
 impl PartialEq for FrMatrix {
     fn eq(&self, rhs: &Self) -> bool {
         self.0.iter().zip(rhs.0.iter()).all(|(a, b)| a == b)
@@ -243,12 +255,36 @@ impl num_traits::Zero for Fr {
 
 // }
 
-pub struct Prover {
-    seeds: Vec<[u8; 32]>,
-    witness: Vec<Fr>,
-    U: Option<DMatrix<Fr>>,
-    V: Option<DMatrix<Fr>>,
+pub struct ProverCommitment {
+    /// Hash of every pair of seed's respective hashes for the seeds used to create the VOLEs. We are just using two seeds per VOLE!
+    /// Can/should be used for Fiat-Shamir of subspace VOLE consistency check
+    pub seed_comm: [u8; 32],
+    /// Witness split into vectors of the same length as the code's dimension
+    pub witness_comm: FrMatrix,
+    /// subsapce VOLE consistency check of U and V's check values, respectively
+    pub consistency_check: (FrVec, FrVec)
+}
+pub struct ProverOpening {
+    /// Openings of one seed per pair
+    pub seed_opens: Vec<[u8; 32]>,
+    /// Proofs that the openings were done correctly
+    pub seed_proofs: Vec<[u8; 32]>,
+    /// S matrix from the final VOLE in the head
+    pub vith_s: FrMatrix,
+    /// R1 and U1 values for the final gate in the ZKP
+    pub final_gate: (Fr, Fr)
+}
 
+pub struct Prover {
+    pub code: RAAACode,
+    pub vole_length: usize,
+    pub num_voles: usize,
+    pub witness: FrVec
+}
+impl Prover {
+    // fn committ(&self) -> ProverCommitment {
+
+    // }
 }
 
 

@@ -1,7 +1,7 @@
 use std::usize;
 use rand::Rng;
 use rand::rngs::ThreadRng;
-use crate::{Fr, FrVec, FrMatrix};
+use crate::{Fr, FrVec, FrMatrix, ProverCommitment};
 use crate::ff::Field;
 
 // lazy_static! {
@@ -285,6 +285,7 @@ impl RAAACode {
         )
     }
 }
+
 #[cfg(test)]
 mod test {
     use std::{ops::Mul, time::Instant, io::repeat};
@@ -402,6 +403,11 @@ mod test {
 
         // check that (at least one of the) subspace VOLEs (and therefore likely all of them) is a successfull subspace VOLE:
         assert!(code.encode(&new_us.0[15]) * deltas + v_rows.0[15].clone() == new_qs.0[15]);
+    }
+
+    #[test]
+    fn consistency_check() {
+        todo!()
     }
     
 }
