@@ -374,14 +374,14 @@ mod test {
         let test_mole = TestMOLE::init([123u8; 32], 16, 1024);
         // Check (at least one of the) VOLEs (and therefore likely all of them) was successful
         assert!(
-            izip!(&test_mole.prover_outputs[7].u, &test_mole.prover_outputs[7].v, &test_mole.verifier_outputs[7].q).all(
+            izip!(&test_mole.prover_outputs[7].u.0, &test_mole.prover_outputs[7].v.0, &test_mole.verifier_outputs[7].q.0).all(
                 |(u, v, q)| u.clone() * test_mole.verifier_outputs[7].delta + v == q.clone()
             )
         );
 
-        let u_cols = FrMatrix(test_mole.prover_outputs.iter().map(|o|FrVec(o.u.clone())).collect::<Vec<FrVec>>());
-        let v_cols = FrMatrix(test_mole.prover_outputs.iter().map(|o|FrVec(o.v.clone())).collect::<Vec<FrVec>>());
-        let q_cols = FrMatrix(test_mole.verifier_outputs.iter().map(|o|FrVec(o.q.clone())).collect::<Vec<FrVec>>());
+        let u_cols = FrMatrix(test_mole.prover_outputs.iter().map(|o|o.u.clone()).collect::<Vec<FrVec>>());
+        let v_cols = FrMatrix(test_mole.prover_outputs.iter().map(|o|o.v.clone()).collect::<Vec<FrVec>>());
+        let q_cols = FrMatrix(test_mole.verifier_outputs.iter().map(|o|o.q.clone()).collect::<Vec<FrVec>>());
         let deltas = FrVec(test_mole.verifier_outputs.iter().map(|o|o.delta.clone()).collect());
         
         let u_rows = u_cols.transpose();

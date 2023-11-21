@@ -4,7 +4,7 @@ mod actors {
     use ff::PrimeField;
     use rand::{SeedableRng, rngs::StdRng};
 
-    use crate::{subspacevole::RAAACode, FrVec, FrMatrix, Fr, zkp::R1CS, vecccom::{u64s_overflow_field, unchecked_fr_from_be_u64_slice}};
+    use crate::{subspacevole::RAAACode, FrVec, FrMatrix, Fr, zkp::R1CS, vecccom::expand_seed_to_Fr_vec, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}};
 
 
 pub struct Prover {
@@ -90,14 +90,15 @@ impl Verifier {
     fn set_deltas(&mut self, proof: &Proof) -> FrVec {
         todo!()
     }
-    /// Generates a vector of length `length` from a seed (e.g. from the commitment to the prover's seeds)
-    /// Be careful not to call this twice the same seed unless that is intended -- it will generate the same randomness
-    fn challenge_from_seed(seed: <StdRng as SeedableRng>::Seed, length: usize) -> FrVec {
-        todo!()
-    }
     fn check_zkp() -> Result<(), Error> {
         todo!()
     }
+}
+
+/// Generates a vector of length `length` from a seed (e.g. from the commitment to the prover's seeds)
+/// Be careful not to call this twice the same seed unless that is intended -- it will generate the same randomness
+fn challenge_from_seed(seed: <StdRng as SeedableRng>::Seed, length: usize) -> FrVec {
+    expand_seed_to_Fr_vec(seed, length)
 }
 
 /// Called by Verifier and Prover to calculate the ∆' 
@@ -121,26 +122,7 @@ pub fn calc_vith_delta(proof: &Proof) -> Fr {
     });
 
     let mut delta = *blake3::hash(&concatted).as_bytes();
-    let mut delta_u64_4 = truncate_u8_32_to_254_bit_u64s_be(&delta);
-    // Rejection sample
-    while u64s_overflow_field(&delta_u64_4) {
-        delta = blake3::hash(&delta).as_bytes().clone();
-        delta_u64_4 = truncate_u8_32_to_254_bit_u64s_be(&delta);
-    }
-    
-    unchecked_fr_from_be_u64_slice(&delta_u64_4)
+    rejection_sample_u8s(&delta)
 
-}
-// Probably best in different file
-/// Converts a [u8; 32] to a [u64; 4] and removes the (big-endian) first two bits of the first u64 so it *might* fit inside the modulus
-pub fn truncate_u8_32_to_254_bit_u64s_be(x: &[u8; 32]) -> [u64; 4] {
-    let mut u64s = [
-        u64::from_be_bytes(x[0..8].try_into().unwrap()), 
-        u64::from_be_bytes(x[8..16].try_into().unwrap()), 
-        u64::from_be_bytes(x[16..24].try_into().unwrap()), 
-        u64::from_be_bytes(x[24..32].try_into().unwrap())
-    ];
-    u64s[0] &= 0x3FFFFFFFFFFFFFFF;
-    u64s
 }
 }

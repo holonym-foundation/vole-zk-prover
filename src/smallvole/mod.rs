@@ -5,39 +5,23 @@ use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use rand::{rngs::{ThreadRng, StdRng}, SeedableRng, RngCore};
 
-use crate::{Fr, vecccom::{unchecked_fr_from_be_u64_slice, expand_seed_to_Fr_vec}};
+use crate::{Fr, vecccom::{expand_seed_to_Fr_vec}, FrVec, utils::{truncate_u8_32_to_254_bit_u64s_be, u64s_overflow_field, fr_from_be_u64_slice, rejection_sample_u8s}};
 
 lazy_static! {
     // Commented out original logic to generate these delta choices, so it can still be seen / verified
     pub static ref DELTA_CHOICES: [Fr; 2] = {
-        let mut first_digest = *blake3::hash("FIRST ∆".as_bytes()).as_bytes();
-        let mut second_digest = *blake3::hash("SECOND ∆".as_bytes()).as_bytes();
-        // Truncate to 254 bits:
-        first_digest[0] &= 0b0011_1111;
-        second_digest[0] &= 0b0011_1111;
-
-        let first_as_u64s = [
-            u64::from_le_bytes(first_digest[0..8].try_into().unwrap()),
-            u64::from_le_bytes(first_digest[8..16].try_into().unwrap()),
-            u64::from_le_bytes(first_digest[16..24].try_into().unwrap()),
-            u64::from_le_bytes(first_digest[24..32].try_into().unwrap()),
-        ];
-        let second_as_u64s = [
-            u64::from_le_bytes(second_digest[0..8].try_into().unwrap()),
-            u64::from_le_bytes(second_digest[8..16].try_into().unwrap()),
-            u64::from_le_bytes(second_digest[16..24].try_into().unwrap()),
-            u64::from_le_bytes(second_digest[24..32].try_into().unwrap()),
-        ];
-        [unchecked_fr_from_be_u64_slice(&first_as_u64s), unchecked_fr_from_be_u64_slice(&second_as_u64s)]
+        let mut first_digest = *blake3::hash("First ∆".as_bytes()).as_bytes();
+        let mut second_digest = *blake3::hash("Second ∆".as_bytes()).as_bytes();
+        [rejection_sample_u8s(&first_digest), rejection_sample_u8s(&first_digest)]
     };
 }
 pub struct ProverSmallVOLEOutputs { 
-    pub u: Vec<Fr>,
-    pub v: Vec<Fr>,
+    pub u: FrVec,
+    pub v: FrVec,
 }
 pub struct VerifierSmallVOLEOutputs {
     pub delta: Fr,
-    pub q: Vec<Fr>,
+    pub q: FrVec,
 }
 
 pub struct VOLE;
@@ -46,10 +30,10 @@ impl VOLE {
     pub fn prover_outputs(seed1: &[u8; 32], seed2: &[u8; 32], vole_length: usize) -> ProverSmallVOLEOutputs {
         let out1 = expand_seed_to_Fr_vec(seed1.clone(), vole_length);
         let out2 = expand_seed_to_Fr_vec(seed2.clone(), vole_length);
-        let zipped = out1.iter().zip(out2.iter());
-        let u = zipped.clone().map(|(o1, o2)| *o1 + o2).collect();
+        let zipped = out1.0.iter().zip(out2.0.iter());
+        let u = &out1 + &out2;
         let v = zipped.map(|(o1, o2)| Fr::ZERO - (*o1 * DELTA_CHOICES[0] + *o2 * DELTA_CHOICES[1]) ).collect();
-        ProverSmallVOLEOutputs { u, v }
+        ProverSmallVOLEOutputs { u, v: FrVec(v) }
     }
     /// Verifier shuold call this after (get) to receive their small VOLE output
     pub fn verifier_outputs(seed_i_know: &[u8; 32], idx_i_dont_know: bool, vole_length: usize) -> VerifierSmallVOLEOutputs {
@@ -60,7 +44,7 @@ impl VOLE {
             (DELTA_CHOICES[0], DELTA_CHOICES[0] - DELTA_CHOICES[1])
         };
 
-        let q = out.iter().map(|o| *o * delta_minus_other_delta).collect();
+        let q = out.scalar_mul(&delta_minus_other_delta);
         VerifierSmallVOLEOutputs { delta, q }
     }
     
@@ -118,13 +102,13 @@ mod test {
         let verifier_outputs_1 = VOLE::verifier_outputs(&seed1, false, 100);
 
         assert!(
-            izip!(&prover_outputs.u, &prover_outputs.v, &verifier_outputs_0.q).all(
+            izip!(&prover_outputs.u.0, &prover_outputs.v.0, &verifier_outputs_0.q.0).all(
                 |(u, v, q)| u.clone() * verifier_outputs_0.delta + v == q.clone()
             )
         );
 
         assert!(
-            izip!(prover_outputs.u, prover_outputs.v, verifier_outputs_1.q).all(
+            izip!(prover_outputs.u.0, prover_outputs.v.0, verifier_outputs_1.q.0).all(
                 |(u, v, q)| u * verifier_outputs_1.delta + v == q
             )
         )

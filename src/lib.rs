@@ -1,4 +1,5 @@
 pub mod zkp;
+pub mod utils;
 pub mod vith;
 pub mod subspacevole;
 pub mod smallvole;
