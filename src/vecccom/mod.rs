@@ -24,25 +24,16 @@ const MODULUS_AS_U64s: [u64; 4] = [
 ];
 
 /// Used for rejection sampling
-fn u64s_overflow_field(x: &[u64; 4]) -> bool {
+pub fn u64s_overflow_field(x: &[u64; 4]) -> bool {
     (x[0] > MODULUS_AS_U64s[0])
  || (x[0] == MODULUS_AS_U64s[0] && x[1] > MODULUS_AS_U64s[1])
  || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] > MODULUS_AS_U64s[2]) 
  || (x[0] == MODULUS_AS_U64s[0] && x[1] == MODULUS_AS_U64s[1] && x[2] == MODULUS_AS_U64s[2] && x[3] >= MODULUS_AS_U64s[3])
 }
 
-/// TODO: It is still the major overhead in seed expansion; see whether there's a faster way
-/// TODO: Check whether ff or ff_ce has this method already and if not, contributing a more generic version.
-pub fn fr_from_be_u64slice_unchecked(from: &[u64; 4]) -> Fr {
-    Fr::from(from[3]) +
-    Fr::from(from[2]) * *TWO_64 +
-    Fr::from(from[1]) * *TWO_128 +
-    Fr::from(from[0]) * *TWO_192
-}
-
 /// Efficient way of making an Fr from a big-endian u64 array representing that number
 /// Does not check for overflow
-pub fn fr_from_be_u64slice_unchecked_faster(from: &[u64; 4]) -> Fr {
+pub fn unchecked_fr_from_be_u64_slice(from: &[u64; 4]) -> Fr {
     let mut repr = [0u8; 32];
     repr[0..8].copy_from_slice(&from[0].to_be_bytes());
     repr[8..16].copy_from_slice(&from[1].to_be_bytes());
@@ -82,7 +73,7 @@ pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> Vec<Fr> {
                 r.next_u64(),
             ];
         }
-        out.push(fr_from_be_u64slice_unchecked_faster(&candidate));
+        out.push(unchecked_fr_from_be_u64_slice(&candidate));
     }
     out
 }
@@ -144,21 +135,21 @@ mod test {
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000002;
 
-        assert_eq!(fr_from_be_u64slice_unchecked(&x), Fr::from_str_vartime("1").unwrap());
+        assert_eq!(unchecked_fr_from_be_u64_slice(&x), Fr::from_str_vartime("1").unwrap());
 
         x[0] = 0x30644E72E131A029;
         x[1] = 0xB85045B68181585D;
         x[2] = 0x2833E84879B97091;
         x[3] = 0x43E1F593F0000001;
 
-        assert_eq!(fr_from_be_u64slice_unchecked(&x), Fr::from_str_vartime("0").unwrap());
+        assert_eq!(unchecked_fr_from_be_u64_slice(&x), Fr::from_str_vartime("0").unwrap());
 
         x[0] = 0x0;
         x[1] = 0x0;
         x[2] = 0x0;
         x[3] = 0x03;
 
-        assert_eq!(fr_from_be_u64slice_unchecked(&x), Fr::from_str_vartime("3").unwrap());
+        assert_eq!(unchecked_fr_from_be_u64_slice(&x), Fr::from_str_vartime("3").unwrap());
     }
     
     #[test]

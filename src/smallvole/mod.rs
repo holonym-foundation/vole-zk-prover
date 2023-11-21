@@ -5,7 +5,7 @@ use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use rand::{rngs::{ThreadRng, StdRng}, SeedableRng, RngCore};
 
-use crate::{Fr, vecccom::{fr_from_be_u64slice_unchecked, expand_seed_to_Fr_vec}};
+use crate::{Fr, vecccom::{unchecked_fr_from_be_u64_slice, expand_seed_to_Fr_vec}};
 
 lazy_static! {
     // Commented out original logic to generate these delta choices, so it can still be seen / verified
@@ -28,7 +28,7 @@ lazy_static! {
             u64::from_le_bytes(second_digest[16..24].try_into().unwrap()),
             u64::from_le_bytes(second_digest[24..32].try_into().unwrap()),
         ];
-        [fr_from_be_u64slice_unchecked(&first_as_u64s), fr_from_be_u64slice_unchecked(&second_as_u64s)]
+        [unchecked_fr_from_be_u64_slice(&first_as_u64s), unchecked_fr_from_be_u64_slice(&second_as_u64s)]
     };
 }
 pub struct ProverSmallVOLEOutputs { 

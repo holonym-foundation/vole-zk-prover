@@ -52,5 +52,21 @@ mod test {
 }
 
 pub mod quicksilver {
+    use crate::{FrVec, Fr};
 
+    use super::R1CS;
+
+    struct Prover {
+        pub u: FrVec,
+        pub v: FrVec,
+    }
+    struct Verifier {
+        pub delta: Fr,
+        pub q: FrVec
+    }
+    impl Verifier {
+        pub fn addition_gates(&self, r1cs: &R1CS) {
+            
+        }
+    }
 }

@@ -1,7 +1,7 @@
 use std::usize;
 use rand::Rng;
 use rand::rngs::ThreadRng;
-use crate::{Fr, FrVec, FrMatrix, ProverCommitment};
+use crate::{Fr, FrVec, FrMatrix};
 use crate::ff::Field;
 
 // lazy_static! {
