@@ -120,24 +120,27 @@ pub fn calc_vith_delta(proof: &Proof) -> Fr {
         )
     });
 
-    let mut delta = blake3::hash(&concatted).as_bytes();
-    let mut delta_u64_4 = &u8_32_to_u64_4(*delta);
+    let mut delta = *blake3::hash(&concatted).as_bytes();
+    let mut delta_u64_4 = truncate_u8_32_to_254_bit_u64s_be(&delta);
     // Rejection sample
-    while u64s_overflow_field(delta_u64_4) {
-        delta = blake3::hash(delta).as_bytes();
-        delta_u64_4 = &u8_32_to_u64_4(*delta);
+    while u64s_overflow_field(&delta_u64_4) {
+        delta = blake3::hash(&delta).as_bytes().clone();
+        delta_u64_4 = truncate_u8_32_to_254_bit_u64s_be(&delta);
     }
     
-    unchecked_fr_from_be_u64_slice(delta_u64_4)
+    unchecked_fr_from_be_u64_slice(&delta_u64_4)
 
 }
-// Probably best in different file:
-pub fn u8_32_to_u64_4(x: [u8; 32]) -> [u64; 4] {
-    [
+// Probably best in different file
+/// Converts a [u8; 32] to a [u64; 4] and removes the (big-endian) first two bits of the first u64 so it *might* fit inside the modulus
+pub fn truncate_u8_32_to_254_bit_u64s_be(x: &[u8; 32]) -> [u64; 4] {
+    let mut u64s = [
         u64::from_be_bytes(x[0..8].try_into().unwrap()), 
         u64::from_be_bytes(x[8..16].try_into().unwrap()), 
         u64::from_be_bytes(x[16..24].try_into().unwrap()), 
         u64::from_be_bytes(x[24..32].try_into().unwrap())
-    ]
+    ];
+    u64s[0] &= 0x3FFFFFFFFFFFFFFF;
+    u64s
 }
 }
