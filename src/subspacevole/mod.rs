@@ -284,6 +284,13 @@ impl RAAACode {
             old_qs.0.iter().zip(&times_deltas).map(|(q, t)|q - t).collect()
         )
     }
+
+    /// Challenge hash is the universal hash 
+    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
+    /// Returns (challenge_hash*u, challenge_hash*v)
+    pub fn calc_prover_consistency_check(challenge_hash: &FrVec, u: &FrMatrix, v: &FrMatrix) -> (FrVec, FrVec) {
+        (challenge_hash * u, challenge_hash * v)
+    }
 }
 
 #[cfg(test)]

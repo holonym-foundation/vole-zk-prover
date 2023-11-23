@@ -186,11 +186,11 @@ impl FrMatrix {
 //     }
 // }
 
-impl<'a, 'b> Mul<&'b FrVec> for &'a FrMatrix {
+impl<'a, 'b> Mul<&'b FrMatrix> for &'a FrVec {
     type Output = FrVec;
-    fn mul(self, rhs: &'b FrVec) -> FrVec {
+    fn mul(self, rhs: &'b FrMatrix) -> FrVec {
         FrVec(
-            self.0.iter().map(|vec| vec.dot(rhs)).collect()
+            rhs.0.iter().map(|col| self.dot(col)).collect()
         )
     }
 }

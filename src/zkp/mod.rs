@@ -8,11 +8,11 @@ pub struct R1CS {
 impl R1CS {
     /// Checks whether it is satisfiable by the witness
     fn witness_check(&self, witness: &FrVec) -> bool {
-        (&self.a * witness)
+        (witness * &self.a)
         *
-        (&self.b * witness)
+        (witness * &self.b)
         ==
-        (&self.c * witness)
+        (witness * &self.c)
     }
 }
 #[cfg(test)]
