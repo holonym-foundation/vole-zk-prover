@@ -154,7 +154,7 @@ impl Prover {
     /// Calculates the S matrix to reveal to the verifier once it learns ∆'
     /// Returns none if it lacks 
     fn s_matrix(&self, vith_delta: &Fr) -> Result<FrMatrix, Error> {
-        let svs = self.subspace_vole_secrets.ok_or(anyhow!("VOLE (and ZKP) must be completed before this step"))?;
+        let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE (and ZKP) must be completed before this step"))?;
         Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
 
     }
