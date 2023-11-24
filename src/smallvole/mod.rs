@@ -5,7 +5,7 @@ use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use rand::{rngs::{ThreadRng, StdRng}, SeedableRng, RngCore};
 
-use crate::{Fr, vecccom::{expand_seed_to_Fr_vec}, FrVec, utils::{truncate_u8_32_to_254_bit_u64s_be, u64s_overflow_field, fr_from_be_u64_slice, rejection_sample_u8s}};
+use crate::{Fr, vecccom::{expand_seed_to_Fr_vec}, FrVec, utils::{truncate_u8_32_to_254_bit_u64s_be, u64s_overflow_field, fr_from_be_u64_slice, rejection_sample_u8s}, ScalarMul};
 
 lazy_static! {
     // Commented out original logic to generate these delta choices, so it can still be seen / verified

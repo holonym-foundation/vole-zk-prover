@@ -1,10 +1,10 @@
 ///! Provides the prover and verifier structs
 mod actors {
-    use anyhow::Error;
+    use anyhow::{Error, anyhow};
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::R1CS, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::R1CS, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul};
 
 
 pub struct Prover {
@@ -13,8 +13,8 @@ pub struct Prover {
     pub num_voles: usize,
     pub witness: FrMatrix,
     pub circuit: R1CS,
-    /// Starts as None, added when the prover makes the VOLE
-    pub secret_artifcats: Option<ProverSecretArtifacts>,
+    /// Starts as None, added when the prover makes the subsapce VOLE
+    pub subspace_vole_secrets: Option<SubspaceVOLESecrets>,
 }
 pub struct Verifier {
     pub code: RAAACode, 
@@ -24,11 +24,19 @@ pub struct Verifier {
     pub vith_delta: Option<Fr>
 }
 
-/// Seeds, U, V, etc. Anything the prover made and needs to keep to itself
-pub struct ProverSecretArtifacts {
+/// Anything that the prover has learned by the time of the subspace VOLE's completion that it must keep hidden:
+pub struct SubspaceVOLESecrets {
     seeds: Vec<([[u8; 32]; 2])>,
-    u: FrMatrix,
-    v: FrMatrix,
+    // u: FrMatrix,
+    // v: FrMatrix,
+    /// First half of u_1s rows
+    u1: FrMatrix,
+    /// Second half of u_1s rows
+    u2: FrMatrix,
+    /// First half of v1_s rows
+    v1: FrMatrix,
+    /// Second half of v1_s rows
+    v2: FrMatrix
 }
 pub struct ProverCommitment {
     /// Hash of every pair of seed's respective hashes for the seeds used to create the VOLEs. We are just using two seeds per VOLE!
@@ -69,8 +77,9 @@ pub struct SubspaceVOLEOpening {
 impl Prover {
     /// Called first
     /// Mutates self to contain secret artifacts, returning a commitment
-    fn mkvole(&mut self) -> ProverCommitment {
-        if self.num_voles < 1024 { println!("Less than 1024 VOLEs could result in <128 bits of soundness with current parameters for linear codes"); }
+    // THOROUGHLY CHECK AND TEST IT GETS THE DIMENSIONS OF U, V, U1, U2, V1, V2, WITNESS, ETC. CORRECT
+    fn mkvole(&mut self) -> Result<ProverCommitment, Error> {
+        if self.num_voles < 1024 { eprintln!("Less than 1024 VOLEs could result in <128 bits of soundness with current parameters for linear codes"); }
         let mut rng = ThreadRng::default();
         let mut seeds: Vec<[[u8; 32]; 2]> = vec![[[0u8; 32]; 2]; self.num_voles];
         let mut seed_commitments = Vec::with_capacity(self.num_voles);
@@ -98,30 +107,56 @@ impl Prover {
                     &self.witness;
 
 
-        debug_assert!(self.code.q % self.num_voles == 0, "invalid num_voles param");
+        if !(self.code.q % self.num_voles == 0) {return Err(anyhow!("invalid num_voles param")) };
         let challenge_hash = challenge_from_seed(seed_comm, self.vole_length);
         let consistency_check = calc_consistency_check(&challenge_hash, &new_u_rows.transpose(), &v_cols);
-        self.secret_artifcats = Some(
-            ProverSecretArtifacts {
-                seeds,
-                u: new_u_rows,
-                v: v_rows
-            }
-        );
-        ProverCommitment { 
+        
+
+
+        /// Before storing the secrets, split them in half, which will make reteiving the individual halves easier
+        
+        let u_len = new_u_rows.0.len();
+        let v_len = v_rows.0.len();
+
+        if !(u_len % 2 == 0) { return Err(anyhow!("Number of u's rows must be even")) }
+        if !(v_len % 2 == 0) { return Err(anyhow!("Number of v's rows must be even")) }
+
+        let half_u_len = u_len / 2;
+        let half_v_len = v_len / 2;
+
+        let u1 = FrMatrix(new_u_rows.0[0..half_u_len].to_vec());
+        let u2 = FrMatrix(new_u_rows.0[half_u_len..u_len].to_vec());
+
+        let v1 = FrMatrix(v_rows.0[0..half_v_len].to_vec());
+        let v2 = FrMatrix(v_rows.0[half_v_len..v_len].to_vec());
+
+
+        self.subspace_vole_secrets = Some(SubspaceVOLESecrets {
+            seeds,
+            u1,
+            u2,
+            v1,
+            v2
+
+        });
+        Ok(ProverCommitment { 
             seed_comm, 
             witness_comm,
             consistency_check
-        }
+        })
     }
     /// Called second
     /// Creates a ZKP that its multiplications are all correct
     fn zkp(&self) -> ZKP {
         todo!()
     }
+    /// Called last
     /// Calculates the S matrix to reveal to the verifier once it learns ∆'
-    fn s_matrix(&self, vith_delta: &Fr) -> FrMatrix {
-        todo!()
+    /// Returns none if it lacks 
+    fn s_matrix(&self, vith_delta: &Fr) -> Result<FrMatrix, Error> {
+        let svs = self.subspace_vole_secrets.ok_or(anyhow!("VOLE (and ZKP) must be completed before this step"))?;
+        Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
+
     }
 }
 

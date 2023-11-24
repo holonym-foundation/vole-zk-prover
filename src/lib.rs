@@ -116,18 +116,6 @@ pub trait DotProduct {
     type Inner;
     fn dot(&self, rhs: &Self) -> Self::Inner;
 }
-
-// impl DotProduct for Vec<Fr> {
-//     type Inner = Fr;
-//     fn dot(&self, rhs: &Self) -> Self::Inner {
-//         self.iter().zip(rhs.iter()).map(|(a, b)| *a * *b).sum::<Fr>()
-//     }
-// }
-impl PartialEq for FrVec {
-    fn eq(&self, rhs: &Self) -> bool {
-        self.0.iter().zip(rhs.0.iter()).all(|(a, b)| a == b)
-    }
-}
 impl DotProduct for FrVec {
     type Inner = Fr;
     fn dot(&self, rhs: &Self) -> Self::Inner {
@@ -135,11 +123,31 @@ impl DotProduct for FrVec {
     }
 }
 
-impl FrVec {
-    fn scalar_mul(&self, rhs: &Fr) -> Self {
+pub trait ScalarMul<T> {
+    fn scalar_mul(&self, rhs: T) -> Self;
+}
+
+impl<'b> ScalarMul<&'b Fr> for FrMatrix {
+    fn scalar_mul(&self, rhs: &'b Fr) -> Self {
+        Self(
+            self.0.iter().map(|x|x.scalar_mul(rhs)).collect()
+        )
+    }
+}
+
+impl<'b> ScalarMul<&'b Fr> for FrVec {
+    fn scalar_mul(&self, rhs: &'b Fr) -> Self {
         Self(self.0.iter().map(|a| *a * *rhs).collect())
     }
 }
+
+impl PartialEq for FrVec {
+    fn eq(&self, rhs: &Self) -> bool {
+        self.0.iter().zip(rhs.0.iter()).all(|(a, b)| a == b)
+    }
+}
+
+
 
 #[derive(Debug, Clone)]
 pub struct FrMatrix(pub Vec<FrVec>);
@@ -186,6 +194,14 @@ impl FrMatrix {
 //     }
 // }
 
+impl<'a, 'b> Add<&'b FrMatrix> for &'a FrMatrix {
+    type Output = FrMatrix;
+    fn add(self, rhs: &'b FrMatrix) -> FrMatrix {
+        FrMatrix(
+            self.0.iter().zip(rhs.0.iter()).map(|(a, b)| a + b).collect()
+        )
+    }
+}
 
 impl<'a, 'b> Sub<&'b FrMatrix> for &'a FrMatrix {
     type Output = FrMatrix;
