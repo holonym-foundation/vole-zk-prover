@@ -81,10 +81,10 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("Constructing 64 x 64 systematic Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_systematic_generator::<64, 64>())); // 256 x 256 takes 1.4s
     // group.bench_function("Constructing 288 x 256 Reed Solomon Generator matrix", |b|b.iter(move||ReedSolomonCode::construct_tc_inverse::<288>()));
 
-    group.bench_function("expand to 4 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 4)));
-    group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
+    // group.bench_function("expand to 4 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 4)));
+    // group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
     // group.bench_function("1024 x 1024 transpose", |b|b.iter(||black_box(fr_matrix.clone()).transpose()));
-    // group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
+    group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
     // // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed()), 10)));
     // // c.bench_function("1048576 random Frs", |b| b.iter(|| rand_fr_vec(black_box(20))));
 }

@@ -40,7 +40,7 @@ pub fn truncate_u8_32_to_254_bit_u64s_be(x: &[u8; 32]) -> [u64; 4] {
     u64s
 }
 
-/// Rejection samples to fit a 32 byte number into a field
+/// Rejection samples by repeatedly hashing to fit a 32 byte number into a field
 /// Is geared for moderate performance but can be improved in some cases
 pub fn rejection_sample_u8s(input: &[u8; 32]) -> Fr {
     let mut attempt = input.clone();

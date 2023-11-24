@@ -51,27 +51,33 @@ pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> FrVec {
     FrVec(out)
 }
 
-/// Instead of long vectors in most VOLE protocols, we're just doing a "vector" commitment to three values,
+/// Instead of long vectors in most VOLE protocols, we're just doing a "vector" commitment to two values,
 /// This means k for our SoftSpokenVOLE instantiation is 2, i.e. ∆ has just two bits of entropy.
 /// Since we have to open and transmit all but one of the seeds, using a larger k for SoftSpokenVOLE doesn't save significant communication and solely wastes computation. 
-pub fn commit_seeds(seed0: &Vec<u8>, seed1: &Vec<u8>) -> Vec<u8> {
-    blake3::hash(
+pub fn commit_seeds<T: AsRef<[u8]>>(seed0: &T, seed1: &T) -> [u8; 32] {
+    *blake3::hash(
         &[
-        *blake3::hash(seed0).as_bytes(),
-        *blake3::hash(seed1).as_bytes(),
+        *blake3::hash(seed0.as_ref()).as_bytes(),
+        *blake3::hash(seed1.as_ref()).as_bytes(),
         ].concat()
-    ).as_bytes().to_vec()
+    ).as_bytes()
+}
+/// Makes one hash of many seed commitments
+pub fn commit_seed_commitments<T: AsRef<[u8]>>(comms: &Vec<T>) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    comms.iter().for_each(|c|{hasher.update(c.as_ref());});
+    *hasher.finalize().as_bytes()
 }
 
 /// Just open one seed and hide the other since only two were committed :P. The proof an element is just the hash of the other hidden element
-pub fn proof_for_revealed_seed(other_seed: &Vec<u8>) -> [u8; 32] {
+pub fn proof_for_revealed_seed(other_seed: &[u8; 32]) -> [u8; 32] {
     *blake3::hash(other_seed).as_bytes()
 }
 
 /// Verifies a proof for a committed seed
 pub fn verify_proof_of_revealed_seed(
-    commitment: &Vec<u8>,
-    revealed_seed: &Vec<u8>, 
+    commitment: &[u8; 32],
+    revealed_seed: &[u8; 32], 
     revealed_seed_idx: bool, 
     proof: &[u8; 32]
 ) -> bool {
@@ -130,8 +136,8 @@ mod test {
     
     #[test]
     fn test_seed_commit_prove() {
-        let seed0 = [5u8; 32].to_vec();
-        let seed1 = [6u8; 32].to_vec();
+        let seed0 = [5u8; 32];
+        let seed1 = [6u8; 32];
         let commitment = commit_seeds(&seed0, &seed1);
 
         let proof0 = proof_for_revealed_seed(&seed1);

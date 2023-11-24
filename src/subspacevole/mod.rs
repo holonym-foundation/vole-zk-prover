@@ -1,4 +1,5 @@
 use std::usize;
+use anyhow::{Error, anyhow};
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use crate::{Fr, FrVec, FrMatrix};
@@ -285,13 +286,33 @@ impl RAAACode {
         )
     }
 
-    /// Challenge hash is the universal hash 
+}
+
+    /// `challenge_hash`` is the universal hash 
+    /// `u` and `v` are the prover's u and v values
     /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
     /// Returns (challenge_hash*u, challenge_hash*v)
-    pub fn calc_prover_consistency_check(challenge_hash: &FrVec, u: &FrMatrix, v: &FrMatrix) -> (FrVec, FrVec) {
-        (challenge_hash * u, challenge_hash * v)
+    /// 
+    pub fn calc_consistency_check(challenge_hash: &FrVec, u_cols: &FrMatrix, v_cols: &FrMatrix) -> (FrVec, FrVec) {
+        (challenge_hash * u_cols, challenge_hash * v_cols)
     }
-}
+    /// `challenge_hash`` is the universal hash 
+    /// `consistency_check` is the value returned frmo `calc_consistency_check`
+    /// `deltas` and `q` are the verifier's deltas and q
+    /// encoder
+    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
+    /// TODO: generics instead of RAAACode. And ofc generics for field
+    pub fn verify_consistency_check(challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix, code: RAAACode,) -> Result<(), Error> {
+        let u_hash = &consistency_check.0;
+        let v_hash = &consistency_check.1;
+        let q_hash = challenge_hash * q_cols;
+        let u_hash_x_generator_x_diag_delta = &code.encode(u_hash) * deltas;
+        if (*v_hash != &q_hash - &u_hash_x_generator_x_diag_delta) {
+            Err(anyhow!("Consistency check fail!"))
+        } else {
+            Ok(())
+        }
+    }
 
 #[cfg(test)]
 mod test {

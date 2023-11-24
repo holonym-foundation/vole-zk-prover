@@ -186,6 +186,16 @@ impl FrMatrix {
 //     }
 // }
 
+
+impl<'a, 'b> Sub<&'b FrMatrix> for &'a FrMatrix {
+    type Output = FrMatrix;
+    fn sub(self, rhs: &'b FrMatrix) -> FrMatrix {
+        FrMatrix(
+            self.0.iter().zip(rhs.0.iter()).map(|(a, b)| a - b).collect()
+        )
+    }
+}
+
 impl<'a, 'b> Mul<&'b FrMatrix> for &'a FrVec {
     type Output = FrVec;
     fn mul(self, rhs: &'b FrMatrix) -> FrVec {
@@ -194,6 +204,7 @@ impl<'a, 'b> Mul<&'b FrMatrix> for &'a FrVec {
         )
     }
 }
+
 
 impl PartialEq for FrMatrix {
     fn eq(&self, rhs: &Self) -> bool {
