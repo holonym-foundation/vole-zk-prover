@@ -9,6 +9,7 @@ use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::O
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
+use rand::rngs::ThreadRng;
 use subspacevole::RAAACode;
 // use subspacevole::{ElementaryColumnOp, ElementaryColumnOpComposition};
 // use num_traits::Zero;
@@ -148,6 +149,14 @@ impl PartialEq for FrVec {
 }
 
 
+impl FrVec {
+    pub fn random(len: usize) -> Self {
+        let mut r = &mut ThreadRng::default();
+        Self(
+            (0..len).map(|_|Fr::random(&mut r)).collect()
+        )
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct FrMatrix(pub Vec<FrVec>);
@@ -169,6 +178,7 @@ impl FrMatrix {
         (self.0[0].0.len(), self.0.len())
     }
 }
+
 
 // impl MulAssign<ElementaryColumnOp> for FrMatrix {
 //     fn mul_assign(&mut self, rhs: ElementaryColumnOp) {

@@ -4,7 +4,7 @@ mod actors {
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::R1CS, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul};
 
 
 pub struct Prover {
@@ -15,6 +15,8 @@ pub struct Prover {
     pub circuit: R1CS,
     /// Starts as None, added when the prover makes the subsapce VOLE
     pub subspace_vole_secrets: Option<SubspaceVOLESecrets>,
+    /// Starts as None, added when the prover makes the subsapce VOLE
+    pub seed_commitment: Option<[u8; 32]>
 }
 pub struct Verifier {
     pub code: RAAACode, 
@@ -48,16 +50,9 @@ pub struct ProverCommitment {
     pub consistency_check: (FrVec, FrVec)
 }
 
-pub struct ZKP {
-    /// Quicksilver multiplication proof of one field element
-    pub mul_proof: Fr,
-    /// Values for the final gate in the ZKP
-    pub last_gate_opening: (Fr, Fr)
-}
-
 pub struct Proof {
     pub zkp: ZKP,
-    pub prover_commitment: ProverCommitment,
+    // pub prover_commitment: ProverCommitment,
     pub prover_opening: SubspaceVOLEOpening,
     /// The VitH S matrix 
     pub s_matrix: FrMatrix,
@@ -130,7 +125,7 @@ impl Prover {
         let v1 = FrMatrix(v_rows.0[0..half_v_len].to_vec());
         let v2 = FrMatrix(v_rows.0[half_v_len..v_len].to_vec());
 
-
+        self.seed_commitment = Some(seed_comm.clone());
         self.subspace_vole_secrets = Some(SubspaceVOLESecrets {
             seeds,
             u1,
@@ -145,32 +140,65 @@ impl Prover {
             consistency_check
         })
     }
-    /// Called second
-    /// Creates a ZKP that its multiplications are all correct
-    fn zkp(&self) -> ZKP {
-        todo!()
-    }
-    /// Called last
+    // /// Called as part of proof()
+    // /// Creates a ZKP that its multiplications are all correct
+    // // /// Also calculates and stores vith_delta when done
+    // fn zkp(&self) -> ZKP {
+    //     todo!()
+    // }
+
+    /// Called as part of proof()
     /// Calculates the S matrix to reveal to the verifier once it learns ∆'
     /// Returns none if it lacks 
     fn s_matrix(&self, vith_delta: &Fr) -> Result<FrMatrix, Error> {
-        let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE (and ZKP) must be completed before this step"))?;
-        Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
+        let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
+        // let vith_delta = self.vith_delta.as_ref().ok_or(anyhow!("ZKP must be completed before this step"))?;
 
+        Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
     }
+
+    /// Wrapper for all other prover functions
+    fn proof(&mut self) -> Result<Proof, Error> {
+        let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
+        let seed_comm = self.seed_commitment.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
+        let zkp = quicksilver::Prover::prove(); // Does not work right now
+        let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles);
+        let s_matrix = self.s_matrix(&vith_delta)?;
+
+        let mut openings = Vec::with_capacity(self.num_voles);
+        let mut opening_proofs = Vec::with_capacity(self.num_voles);
+        for i in 0..svs.seeds.len() {
+            openings.push(svs.seeds[i][subspace_deltas[i]]);
+            opening_proofs.push(
+                proof_for_revealed_seed(&svs.seeds[i][1 - subspace_deltas[i]])
+            );
+        };
+
+        Ok(
+            Proof { 
+                zkp, 
+                prover_opening : SubspaceVOLEOpening { seed_opens: openings, seed_proofs: opening_proofs },
+                s_matrix
+            }
+        )
+    }
+
 }
 
 impl Verifier {
-    fn check() -> Result<(), Error> {
+    /// Perform consistency check and store commitments correction values
+    fn process_subspace_vole() -> Result<(), Error> {
+        todo!()
+    }
+    /// Checks the ZKP and sets the seed for the Fiat-shamir according to the ZKP
+    fn process_zkp() -> Result<(), Error> {
         todo!()
     }
     /// Mutates self to include choices for delta
-    fn set_deltas(&mut self, proof: &Proof) -> FrVec {
+    fn process_(&mut self, proof: &Proof) -> FrVec {
         todo!()
     }
-    fn check_zkp() -> Result<(), Error> {
-        todo!()
-    }
+    
 }
 
 /// Generates a vector of length `length` from a seed (e.g. from the commitment to the prover's seeds)
@@ -180,18 +208,19 @@ fn challenge_from_seed(seed: <StdRng as SeedableRng>::Seed, length: usize) -> Fr
 }
 
 /// Called by Verifier and Prover to calculate the ∆' 
-/// WARNING: if Proof struct is modified and this line of code is not, Fiat-Shamir could be rendered insecure !
-pub fn calc_vith_delta(proof: &Proof) -> Fr {
+/// Takes seed commitment and ZKP as input
+/// Returns (subfield VOLE indices, VitH choice)
+pub fn calc_deltas(seed_comm: &[u8; 32], zkp: &ZKP, num_voles: usize) -> (Vec<usize>, Fr) {
     // Fiat-Shamir
         // TODO: double check it's fine to skip hashing the witness commitment. I am pretty confident it is:
         // if the prover changes their witness commitment, they will get caught by it either 
         // 1. not being a valid witness
         // 2. not corresponding to a valid VOLE
 
-    let mut frs = vec![proof.zkp.last_gate_opening.0, proof.zkp.last_gate_opening.1, proof.zkp.mul_proof];
+    let mut frs = vec![zkp.last_gate_opening.0, zkp.last_gate_opening.1, zkp.mul_proof];
     // Concatenate Frs byte representation with seed commitment
     let mut concatted = Vec::with_capacity(32 * (1 + frs.len()));
-    concatted.append(&mut proof.prover_commitment.seed_comm.to_vec());
+    concatted.append(&mut seed_comm.to_vec());
 
     frs.iter_mut().for_each(|f| {
         concatted.append(
@@ -200,6 +229,21 @@ pub fn calc_vith_delta(proof: &Proof) -> Fr {
     });
 
     let delta_first_try = *blake3::hash(&concatted).as_bytes();
-    rejection_sample_u8s(&delta_first_try)
+    let vith_delta = rejection_sample_u8s(&delta_first_try);
+
+    concatted.append(&mut "subspace_vole_challenge".as_bytes().to_vec());
+    let subspace_vole_delta_seed = *blake3::hash(&concatted).as_bytes();
+    let prg_seed: <StdRng as SeedableRng>::Seed = subspace_vole_delta_seed;
+    let mut prg = StdRng::from_seed(prg_seed);
+    let mut delta_choices: Vec<usize> = Vec::with_capacity(num_voles);
+    // This is inefficient but not a bottleneck
+    (0..num_voles).for_each(|_|delta_choices.push((prg.next_u32() % 2) as usize));
+
+    (delta_choices, vith_delta)
+
+}
+
+fn opening_challenges() {
+
 }
 }
