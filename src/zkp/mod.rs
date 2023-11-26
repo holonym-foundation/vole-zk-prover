@@ -24,7 +24,9 @@ pub struct R1CSWithMetadata {
 }
 
 pub mod quicksilver {
-    use crate::{FrVec, Fr, FrMatrix, DotProduct};
+    use anyhow::{Error, anyhow};
+
+    use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul};
 
     use super::{R1CS, R1CSWithMetadata};
 
@@ -32,10 +34,12 @@ pub mod quicksilver {
     pub struct ZKP {
         /// Quicksilver multiplication proof of two field elements
         pub mul_proof: (Fr, Fr),
-        /// Opening (u, v) of public input wires
-        pub public_input_openings: Vec<(Fr, Fr)>,
-        /// Opening (u, v) of public output wires
-        pub public_output_openings: Vec<(Fr, Fr)>
+        // Public inputs and outputs should not be checked in the Quicksilver; they should be opened after conveting VitH to subspace VOLE, before VitH ∆ is chosen 
+        // It may be possible to securely reveal public inputs after ∆ is known, but why worry about it if we can reveal public inputs before cheating is as big a concern?
+        // /// Opening (u, v) of public input wires
+        // pub public_input_openings: Vec<(Fr, Fr)>,
+        // /// Opening (u, v) of public output wires
+        // pub public_output_openings: Vec<(Fr, Fr)>
     }
     pub struct Prover {
         pub u: FrVec,
@@ -66,7 +70,7 @@ pub mod quicksilver {
         /// 1. Calculates the outputs of linear gates, i.e. the dot product of witness with each R1CS row
         /// 2. Uses those outputs as the inputs and outputs of multiplication gates (one multiplication per R1CS row)
         /// 3. Computes and, if it is 0, returns the final gate's decommitment, + a Quicksilver multiplcation proof 
-        /// NOTE: According to the Quicksilver paper, `challenge_hash` should be given after the values are determined.
+        /// NOTE: According to the Quicksilver paper, `challenge` should be given after the values are determined.
         /// Think about it this way: if the prover knows `challenge` before he commits to u and v (including the witness), 
         /// The prover can find a 'collision'. This is as simple as changing the witnesss
         /// so u is different but still produces the same Quicksilver check value. Note this would not affect the underlying subspace VOLE if used with VitH since a different witness would still
@@ -88,41 +92,66 @@ pub mod quicksilver {
             let new_u = &(&u_b * &v_a + &u_a * &v_b) - &v_c;
             let new_v = &v_a * &v_b;
             
-            let mut challenge_vec = Vec::with_capacity(l);
-            challenge_vec[0] = challenge.clone();
-            for i in 1..l {
-                // TODO: posisble very slight performance gain by cacheing i-1
-                challenge_vec[i] = challenge_vec[i-1] * challenge;
-            }
-            let challenge_vec = FrVec(challenge_vec);
+            let challenge_vec = get_challenge_vec(challenge, l);
 
             ZKP {
                 mul_proof: (new_u.dot(&challenge_vec), new_v.dot(&challenge_vec)),
-                public_input_openings: self.r1cs_with_metadata.public_inputs_indices.iter().map(
-                    |i|(self.u.0[*i], self.v.0[*i])
-                ).collect(),
-                public_output_openings: self.r1cs_with_metadata.public_outputs_indices.iter().map(
-                    |i|(self.u.0[*i], self.v.0[*i])
-                ).collect(),
+                // public_input_openings: self.r1cs_with_metadata.public_inputs_indices.iter().map(
+                //     |i|(self.u.0[*i], self.v.0[*i])
+                // ).collect(),
+                // public_output_openings: self.r1cs_with_metadata.public_outputs_indices.iter().map(
+                //     |i|(self.u.0[*i], self.v.0[*i])
+                // ).collect(),
             }
             
 
         }
     }
+
+    /// Creates a vector [challenge, challenge^2, challenge^3, ..., challenge^length]
+    fn get_challenge_vec(challenge: &Fr, length: usize) -> FrVec {
+        let mut challenge_vec = Vec::with_capacity(length);
+            challenge_vec.push(challenge.clone());
+            for i in 1..length {
+                // TODO: posisble very slight performance gain by cacheing i-1
+                challenge_vec.push(challenge_vec[i-1] * challenge);
+            }
+        FrVec(challenge_vec)
+    }
     pub struct Verifier {
         pub delta: Fr,
-        pub q: FrVec
+        pub q: FrVec,
+        pub r1cs_with_metadata: R1CSWithMetadata
     }
     impl Verifier {
         /// Creates a prover from VitH U1 and R matrices of equal dimension with 2l+2 rows where the witness is split into l chunks of length vole_length
         /// Takes ownership and mutates most of its inputs to something useless
-        pub fn from_vith(mut q_rows: FrMatrix, delta: Fr, r1cs: R1CS) -> Verifier {
+        pub fn from_vith(mut q_rows: FrMatrix, delta: Fr, r1cswm: R1CSWithMetadata) -> Verifier {
+            let r1cs = &r1cswm.r1cs;
             assert!((r1cs.a_rows.0.len() == q_rows.0.len()) && (r1cs.a_rows.0[0].0.len() == q_rows.0[0].0.len()), "VOLE dimensions must match R1CS dimensions");
             let vith_size = q_rows.0.len() * q_rows.0[0].0.len();
             let mut q = Vec::with_capacity(vith_size);
-            q_rows.0.iter_mut().map(|row| q.append(&mut row.0));
+            q_rows.0.iter_mut().for_each(|row| q.append(&mut row.0));
             let q = FrVec(q);
-            Self { delta, q }
+            Self { delta, q, r1cs_with_metadata: r1cswm }
+        }
+
+        /// Verifies a (degree 2) Quicksilver proof, returning the public inputs and outputs if successfull. Otherwise, returns an error
+        /// NOTE: According to the Quicksilver paper, `challenge` should be given after the values are determined.
+        pub fn verify(&self, challenge: &Fr, proof: &ZKP) -> Result<(), Error>{
+            let r1cs = &self.r1cs_with_metadata.r1cs;
+            let q_a = &self.q * &r1cs.a_rows;
+            let q_b = &self.q * &r1cs.b_rows;
+            let q_c = &self.q * &r1cs.c_rows;
+
+            // Quicksilver protocol to transform VOLE into a new VOLE that makes multiplcation gates linear relations
+            let new_q = &(q_a * q_b) - &q_c.scalar_mul(&self.delta);
+            let challenge_vec = get_challenge_vec(challenge, self.q.0.len());
+            let success = proof.mul_proof.1 + proof.mul_proof.0 * self.delta == new_q.dot(&challenge_vec);
+            match success {
+                true => Ok(()),
+                false => Err(anyhow!("Proof was not verified with success"))
+            }
         }
     }
 }
@@ -132,7 +161,7 @@ mod test {
     use ff::{Field, PrimeField};
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
-    use crate::{FrVec, Fr, ScalarMul};
+    use crate::{FrVec, Fr, ScalarMul, zkp::quicksilver::Verifier};
     use super::{*, quicksilver::Prover};
 
     lazy_static! {
@@ -184,14 +213,22 @@ mod test {
             v: v.clone(),
             r1cs_with_metadata: TEST_R1CS_WITH_METADA.clone()
         };
-        let proof = prover.prove(&Fr::from_u128(0987654321));
+        let challenge = &Fr::from_u128(123);
+        let proof = prover.prove(challenge);
         println!("proof is {:?}", proof);
-        assert_eq!(proof.public_input_openings, vec![
-            (witness.0[0].clone(), v.0[0].clone()),
-            (witness.0[2].clone(), v.0[2].clone())
-        ]);
-        assert_eq!(proof.public_output_openings, vec![(witness.0[3].clone(), v.0[3].clone())]);
-        todo!()
+        // assert_eq!(proof.public_input_openings, vec![
+        //     (witness.0[0].clone(), v.0[0].clone()),
+        //     (witness.0[2].clone(), v.0[2].clone())
+        // ]);
+        // assert_eq!(proof.public_output_openings, vec![(witness.0[3].clone(), v.0[3].clone())]);
+        let verifier = Verifier {
+            q,
+            delta,
+            r1cs_with_metadata: TEST_R1CS_WITH_METADA.clone()
+        };
+        assert!(verifier.verify(challenge, &proof).is_ok());
+        assert!(verifier.verify(&Fr::from_u128(69), &proof).is_err());
+        // TODO: assert a bad witness fails (is this necessary tho bc ZK protocol will catch that lol)
     }
 
     #[test]

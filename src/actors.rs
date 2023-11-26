@@ -157,16 +157,18 @@ impl Prover {
         Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
     }
 
-    /// INSECURE UNTIL `prover.prove` uses a proper challenge
+    /// INSECURE UNTIL `prover.prove` uses a proper challenge and public openings
     /// Wrapper for all other prover functions
     fn proof(&mut self) -> Result<Proof, Error> {
         let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
         let seed_comm = self.seed_commitment.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
         // TODO: without so much cloning
         let prover = quicksilver::Prover::from_vith(svs.u1.clone(), svs.u2.clone(), self.witness.clone(), self.circuit.clone());
-        
-        let zkp = prover.prove(&Fr::from_u128(12345)); // Does not work right now
-        let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles);
+        // TODO: calculate the challenge correctly
+        let zkp = prover.prove(&Fr::from_u128(12345)); 
+        // TODO: calculate the openings correctly
+        let openings = todo!();
+        let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles, openings);
         let s_matrix = self.s_matrix(&vith_delta)?;
 
         let mut openings = Vec::with_capacity(self.num_voles);
@@ -205,16 +207,21 @@ impl Verifier {
     
 }
 
+/// Values of the witness that the prover opens
+pub struct PublicOpenings {
+    pub public_inputs: Vec<(Fr, Fr)>,
+    pub public_outputs: Vec<(Fr, Fr)>
+}
 /// Generates a vector of length `length` from a seed (e.g. from the commitment to the prover's seeds)
 /// Be careful not to call this twice the same seed unless that is intended -- it will generate the same randomness
 fn challenge_from_seed(seed: <StdRng as SeedableRng>::Seed, length: usize) -> FrVec {
     expand_seed_to_Fr_vec(seed, length)
 }
 
-/// Called by Verifier and Prover to calculate the ∆' 
+/// Called by Verifier and Prover to calculate the original VOLE ∆s along with the ∆' 
 /// Takes seed commitment and ZKP as input
 /// Returns (subfield VOLE indices, VitH choice)
-pub fn calc_deltas(seed_comm: &[u8; 32], zkp: &ZKP, num_voles: usize) -> (Vec<usize>, Fr) {
+pub fn calc_deltas(seed_comm: &[u8; 32], zkp: &ZKP, num_voles: usize, public_openings: &PublicOpenings) -> (Vec<usize>, Fr) {
     // Fiat-Shamir
         // TODO: double check it's fine to skip hashing the witness commitment. I am pretty confident it is:
         // if the prover changes their witness commitment, they will get caught by it either 
@@ -222,14 +229,14 @@ pub fn calc_deltas(seed_comm: &[u8; 32], zkp: &ZKP, num_voles: usize) -> (Vec<us
         // 2. not corresponding to a valid VOLE
 
     let mut frs = vec![zkp.mul_proof.0, zkp.mul_proof.1];
-    for i in 0..zkp.public_input_openings.len(){
-        frs.push(zkp.public_input_openings[i].0);
-        frs.push(zkp.public_input_openings[i].1);
+    for i in 0..public_openings.public_inputs.len(){
+        frs.push(public_openings.public_inputs[i].0);
+        frs.push(public_openings.public_inputs[i].1);
 
     }
-    for i in 0..zkp.public_output_openings.len(){
-        frs.push(zkp.public_output_openings[i].0);
-        frs.push(zkp.public_output_openings[i].1);
+    for i in 0..public_openings.public_outputs.len(){
+        frs.push(public_openings.public_outputs[i].0);
+        frs.push(public_openings.public_outputs[i].1);
 
     }
     let mut concatted = &mut seed_comm.to_vec();
