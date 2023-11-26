@@ -4,7 +4,7 @@ mod actors {
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul};
 
 
 pub struct Prover {
@@ -12,7 +12,7 @@ pub struct Prover {
     pub vole_length: usize,
     pub num_voles: usize,
     pub witness: FrMatrix,
-    pub circuit: R1CS,
+    pub circuit: R1CSWithMetadata,
     /// Starts as None, added when the prover makes the subsapce VOLE
     pub subspace_vole_secrets: Option<SubspaceVOLESecrets>,
     /// Starts as None, added when the prover makes the subsapce VOLE
@@ -157,11 +157,15 @@ impl Prover {
         Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
     }
 
+    /// INSECURE UNTIL `prover.prove` uses a proper challenge
     /// Wrapper for all other prover functions
     fn proof(&mut self) -> Result<Proof, Error> {
         let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
         let seed_comm = self.seed_commitment.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
-        let zkp = quicksilver::Prover::prove(); // Does not work right now
+        // TODO: without so much cloning
+        let prover = quicksilver::Prover::from_vith(svs.u1.clone(), svs.u2.clone(), self.witness.clone(), self.circuit.clone());
+        
+        let zkp = prover.prove(&Fr::from_u128(12345)); // Does not work right now
         let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles);
         let s_matrix = self.s_matrix(&vith_delta)?;
 
@@ -217,10 +221,21 @@ pub fn calc_deltas(seed_comm: &[u8; 32], zkp: &ZKP, num_voles: usize) -> (Vec<us
         // 1. not being a valid witness
         // 2. not corresponding to a valid VOLE
 
-    let mut frs = vec![zkp.last_gate_opening.0, zkp.last_gate_opening.1, zkp.mul_proof];
+    let mut frs = vec![zkp.mul_proof.0, zkp.mul_proof.1];
+    for i in 0..zkp.public_input_openings.len(){
+        frs.push(zkp.public_input_openings[i].0);
+        frs.push(zkp.public_input_openings[i].1);
+
+    }
+    for i in 0..zkp.public_output_openings.len(){
+        frs.push(zkp.public_output_openings[i].0);
+        frs.push(zkp.public_output_openings[i].1);
+
+    }
+    let mut concatted = &mut seed_comm.to_vec();
+
     // Concatenate Frs byte representation with seed commitment
-    let mut concatted = Vec::with_capacity(32 * (1 + frs.len()));
-    concatted.append(&mut seed_comm.to_vec());
+    // let mut concatted = Vec::with_capacity(32 * (1 + frs.len()));
 
     frs.iter_mut().for_each(|f| {
         concatted.append(
