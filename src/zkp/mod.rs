@@ -70,9 +70,9 @@ pub mod quicksilver {
         /// 1. Calculates the outputs of linear gates, i.e. the dot product of witness with each R1CS row
         /// 2. Uses those outputs as the inputs and outputs of multiplication gates (one multiplication per R1CS row)
         /// 3. Computes and, if it is 0, returns the final gate's decommitment, + a Quicksilver multiplcation proof 
-        /// NOTE: According to the Quicksilver paper, `challenge` should be given after the values are determined.
-        /// Think about it this way: if the prover knows `challenge` before he commits to u and v (including the witness), 
-        /// The prover can find a 'collision'. This is as simple as changing the witnesss
+        /// NOTE: According to the Quicksilver paper, `challenge` should be given after the VOLE outputs are determined.
+        /// NOTE: Even after these values are determined, there is still some type of malleability --
+        /// the prover can find a 'collision'. This is as simple as changing the witnesss
         /// so u is different but still produces the same Quicksilver check value. Note this would not affect the underlying subspace VOLE if used with VitH since a different witness would still
         /// lay in the correct subspace. Therefore, it's important `challenge` depends on the witness.
         pub fn prove(&self, challenge: &Fr) -> ZKP {
@@ -215,12 +215,7 @@ mod test {
         };
         let challenge = &Fr::from_u128(123);
         let proof = prover.prove(challenge);
-        println!("proof is {:?}", proof);
-        // assert_eq!(proof.public_input_openings, vec![
-        //     (witness.0[0].clone(), v.0[0].clone()),
-        //     (witness.0[2].clone(), v.0[2].clone())
-        // ]);
-        // assert_eq!(proof.public_output_openings, vec![(witness.0[3].clone(), v.0[3].clone())]);
+
         let verifier = Verifier {
             q,
             delta,
@@ -233,6 +228,6 @@ mod test {
 
     #[test]
     pub fn from_vith() {
-
+        todo!()
     }
 }

@@ -2,6 +2,7 @@ pub mod zkp;
 pub mod utils;
 pub mod vith;
 pub mod subspacevole;
+pub mod challenges;
 pub mod smallvole;
 pub mod vecccom;
 pub mod actors;
