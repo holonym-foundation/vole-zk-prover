@@ -4,7 +4,7 @@ pub mod actors {
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul, challenges::{challenge_from_seed, calc_deltas}};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check, verify_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul, challenges::{challenge_from_seed, calc_deltas}};
 
 
 pub struct Prover {
@@ -20,6 +20,8 @@ pub struct Prover {
 }
 pub struct Verifier {
     pub code: RAAACode, 
+    pub num_voles: usize,
+    pub vole_length: usize,
     /// Starts as None, set during Fiat Shamir
     pub subspace_vole_deltas: Option<FrVec>,
     /// Starts as None, set during Fiat Shamir
@@ -103,7 +105,7 @@ impl Prover {
 
 
         if !(self.code.q % self.num_voles == 0) {return Err(anyhow!("invalid num_voles param")) };
-        let challenge_hash = challenge_from_seed(seed_comm, self.vole_length);
+        let challenge_hash = challenge_from_seed(&seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
         let consistency_check = calc_consistency_check(&challenge_hash, &new_u_rows.transpose(), &v_cols);
         
 
@@ -193,17 +195,21 @@ impl Prover {
 
 impl Verifier {
     /// Perform consistency check and store commitments correction values
-    fn process_subspace_vole() -> Result<(), Error> {
+    fn process_subspace_vole(&self, c: &ProverCommitment) -> Result<(), Error> {
+        let challenge_hash = &challenge_from_seed(&c.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
+        let result = verify_consistency_check(challenge_hash, &c.consistency_check, &self.subspace_vole_deltas, q_cols, self.code);
         todo!()
+
     }
     /// Checks the ZKP and sets the seed for the Fiat-shamir according to the ZKP
     fn process_zkp() -> Result<(), Error> {
         todo!()
     }
-    /// Mutates self to include choices for delta
-    fn process_(&mut self, proof: &Proof) -> FrVec {
+    /// Once all the prover inputs have been processed and deltas have been set, checks the public openings and VOLEs
+    fn verify_vole_and_public_openings(&mut self, proof: &Proof) -> FrVec {
         todo!()
     }
+
     
 }
 

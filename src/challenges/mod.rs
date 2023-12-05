@@ -6,7 +6,11 @@ use rand::{rngs::StdRng, SeedableRng, RngCore};
 use crate::{zkp::quicksilver::ZKP, FrVec, vecccom::expand_seed_to_Fr_vec, actors::actors::PublicOpenings, Fr, utils::rejection_sample_u8s, FrMatrix, DotProduct};
 /// Generates a vector of length `length` from a seed (e.g. from the commitment to the prover's seeds)
 /// Be careful not to call this twice the same seed unless that is intended -- it will generate the same randomness
-pub fn challenge_from_seed(seed: <StdRng as SeedableRng>::Seed, length: usize) -> FrVec {
+/// Hence, the salt is included to prevent this from easily happening on accident.
+pub fn challenge_from_seed(seed: &[u8], salt: &[u8], length: usize) -> FrVec {
+    let seed = {
+        *blake3::hash(&[seed, salt].concat()).as_bytes()
+    };
     expand_seed_to_Fr_vec(seed, length)
 }
 
@@ -15,8 +19,8 @@ pub fn calc_quicksilver_challenge(seed_comm: &[u8; 32], witness_comm: &FrMatrix)
     concatted.append(&mut "quicksilver_challenge".as_bytes().to_vec());
     let digest = *blake3::hash(concatted).as_bytes();
     // Universal hash of witness commitment to compress it to one value
-    let universal_inner = challenge_from_seed(digest.clone() , witness_comm.0.len());
-    let universal_outer = challenge_from_seed(digest, witness_comm.0[0].0.len());
+    let universal_inner = challenge_from_seed(&digest, &"quicksilver_inner".as_bytes(), witness_comm.0.len());
+    let universal_outer = challenge_from_seed(&digest, &"quicksilver_outer".as_bytes(), witness_comm.0[0].0.len());
     let compressed = universal_outer.dot(
         &(&universal_inner * witness_comm)
     );
