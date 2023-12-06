@@ -272,3 +272,11 @@ pub struct PublicOpenings {
 }
 
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    fn prover_verifier_full_integration() {
+        todo!()
+    }
+}

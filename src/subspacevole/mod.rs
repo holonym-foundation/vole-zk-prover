@@ -131,7 +131,7 @@ impl RAAACode {
     /// Interleave inverse is just interleave with the inverse of `permutation`
     pub fn interleave(input: &FrVec, permutation: &Vec<usize>) -> FrVec {
         let len = input.0.len();
-        assert!(len == permutation.len(), "input length must match number of swaps");
+        assert!(len == permutation.len(), "input length {} must match number of swaps {}", len, permutation.len());
         let mut out = vec![Fr::ZERO; len];
         for i in 0..len {
             out[permutation[i]] = input.0[i];
@@ -296,7 +296,7 @@ impl RAAACode {
         let in1_inv = Self::interleave(&acc1_inv, &self.permutations[1].1);
         let acc0_inv = Self::accumulate_inverse(&in1_inv);
         let should_be_repeated = Self::interleave(&acc0_inv, &self.permutations[0].1);     
-       
+        println!("should be repeated: {:?}", should_be_repeated);
        // Check that the reuslt is a codeword for the repetition code
         let len = should_be_repeated.0.len();
         assert!(len % self.q == 0, "length must be divisible by q");
@@ -305,7 +305,7 @@ impl RAAACode {
         let zeroth_section = should_be_repeated.0[0..section_len].to_vec();
         for i in 1..self.q {
             let idx_start = section_len * i;
-            if should_be_repeated.0[idx_start ..idx_start + section_len].to_vec() == zeroth_section {
+            if should_be_repeated.0[idx_start ..idx_start + section_len].to_vec() != zeroth_section {
                 return false;
             }
         }
@@ -471,9 +471,24 @@ mod test {
         assert!(code.encode(&new_us.0[15]) * deltas + v_rows.0[15].clone() == new_qs.0[15]);
     }
 
+    // TODO: more edge cases
     #[test]
     fn check_parity() {
-        todo!()
+        let code = RAAACode {
+            permutations: [RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6)],
+            q: 2
+        };
+        let input = FrVec::random(3);
+        // let code = RAAACode::rand_default();
+        // let input = FrVec::random(512);
+        let codeword = code.encode(&input);
+        let mut invalid_codeword = codeword.clone();
+        invalid_codeword.0[2] = Fr::random(&mut rand::thread_rng());
+        let mut invalid_length = codeword.clone();
+        invalid_length.0.push(Fr::random(&mut rand::thread_rng()));
+        assert!(code.check_parity(&codeword));
+        assert!(!code.check_parity(&invalid_codeword));
+        // assert!(!code.check_parity(&invalid_length));
     }
     #[test]
     fn check_parity_batch() {
