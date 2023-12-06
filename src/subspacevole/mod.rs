@@ -493,8 +493,11 @@ mod test {
     fn check_parity_batch() {
         let code = RAAACode::rand_default();
         let input: Vec<FrVec> = (0..10).map(|_|FrVec::random(512)).collect();
-        let codewords: Vec<FrVec> = input.iter().map(|x|code.encode(x)).collect();
+        let mut codewords: Vec<FrVec> = input.iter().map(|x|code.encode(x)).collect();
         assert!(code.check_parity_batch(&codewords).is_ok());
+        codewords[2].0[7] = Fr::random(&mut rand::thread_rng());
+        assert!(code.check_parity_batch(&codewords).is_err())
+
     }
     #[test]
     fn consistency_check() {
