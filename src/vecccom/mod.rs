@@ -81,6 +81,14 @@ pub fn verify_proof_of_revealed_seed(
     revealed_seed_idx: bool, 
     proof: &[u8; 32]
 ) -> bool {
+    &reconstruct_commitment(revealed_seed, revealed_seed_idx, proof) == commitment
+}
+/// Reconstructs a commitment to a seed given a known seed and a proof for the other seed. If this commitment checks out the proof is valid
+pub fn reconstruct_commitment(
+    revealed_seed: &[u8; 32], 
+    revealed_seed_idx: bool, 
+    proof: &[u8; 32]
+) -> [u8; 32] {
     let digest_of_revealed = *blake3::hash(revealed_seed).as_bytes();
     let preimage = 
     if revealed_seed_idx {
@@ -88,7 +96,7 @@ pub fn verify_proof_of_revealed_seed(
     } else {
         [digest_of_revealed, proof.clone()].concat()
     };
-    blake3::hash(&preimage).as_bytes().to_vec() == *commitment
+    *blake3::hash(&preimage).as_bytes()
 }
 
 #[cfg(test)]

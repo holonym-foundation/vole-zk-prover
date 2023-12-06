@@ -32,15 +32,17 @@ pub fn calc_quicksilver_challenge(seed_comm: &[u8; 32], witness_comm: &FrMatrix)
 }
 
 /// Called by Verifier and Prover to calculate the original VOLE ∆s along with the ∆' 
-/// Takes seed commitment and ZKP as input
+/// seed commitment and ZKP as input
 /// Returns (subfield VOLE indices, VitH choice)
+/// Important note: if u, v, q, ∆ are known to the prover, the prover can forge another (u, v) pair \
+/// that satisfies q = v + u∆
+/// therefore, the prover should open the public inputs before learning ∆. In Fiat-Shamir, ∆'s calculation should then include all prover ZKP and public openings
 pub fn calc_deltas(seed_comm: &[u8; 32], zkp: &ZKP, num_voles: usize, public_openings: &PublicOpenings) -> (Vec<usize>, Fr) {
     // Fiat-Shamir
         // TODO: double check it's fine to skip hashing the witness commitment. I am pretty confident it is:
         // if the prover changes their witness commitment, they will get caught by it either 
         // 1. not being a valid witness
         // 2. not corresponding to a valid VOLE
-
     let mut frs = vec![zkp.mul_proof.0, zkp.mul_proof.1];
     for i in 0..public_openings.public_inputs.len(){
         frs.push(public_openings.public_inputs[i].0);

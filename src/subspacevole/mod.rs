@@ -1,4 +1,4 @@
-use std::usize;
+use std::{usize, result};
 use anyhow::{Error, anyhow};
 use rand::Rng;
 use rand::rngs::ThreadRng;
@@ -286,6 +286,61 @@ impl RAAACode {
         )
     }
 
+    /// SECURITY TODO: (for audit?) check this is sufficient for determining whether something is a RAAA codeword
+    /// For partity check, you can invert the accumulations and permutations and then check the result is in the subspace of the repetition code
+    pub fn check_parity(&self, putative_codeword: &FrVec) -> bool {
+        // Invet all the operations until the initial repetition code
+        let acc2_inv = Self::accumulate_inverse(&putative_codeword);
+        let in2_inv = Self::interleave(&acc2_inv, &self.permutations[2].1);
+        let acc1_inv = Self::accumulate_inverse(&in2_inv);
+        let in1_inv = Self::interleave(&acc1_inv, &self.permutations[1].1);
+        let acc0_inv = Self::accumulate_inverse(&in1_inv);
+        let should_be_repeated = Self::interleave(&acc0_inv, &self.permutations[0].1);     
+       
+       // Check that the reuslt is a codeword for the repetition code
+        let len = should_be_repeated.0.len();
+        assert!(len % self.q == 0, "length must be divisible by q");
+        let section_len = len / self.q;
+        assert!(self.q > 1, "can't check parity without repetition");
+        let zeroth_section = should_be_repeated.0[0..section_len].to_vec();
+        for i in 1..self.q {
+            let idx_start = section_len * i;
+            if should_be_repeated.0[idx_start ..idx_start + section_len].to_vec() == zeroth_section {
+                return false;
+            }
+        }
+
+        true
+
+    }
+
+    pub fn check_parity_batch(&self, putative_codewords: &Vec<FrVec>) -> Result<(), Error> {
+        match putative_codewords.iter().all(|pc|self.check_parity(pc)) {
+            true => Ok(()),
+            false => Err(anyhow!("Parity check failure"))
+        }
+    }
+
+
+    /// `challenge_hash`` is the universal hash 
+    /// `consistency_check` is the value returned frmo `calc_consistency_check`
+    /// `deltas` and `q` are the verifier's deltas and q
+    /// encoder
+    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
+    /// TODO: generics instead of RAAACode. And ofc generics for field
+    pub fn verify_consistency_check(&self, challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix) -> Result<(), Error> {
+        let u_hash = &consistency_check.0;
+        let v_hash = &consistency_check.1;
+        let q_hash = challenge_hash * q_cols;
+        let u_hash_x_generator_x_diag_delta = &self.encode(u_hash) * deltas;
+        if (*v_hash != &q_hash - &u_hash_x_generator_x_diag_delta) {
+            Err(anyhow!("Consistency check fail!"))
+        } else {
+            Ok(())
+        }
+    }
+
+
 }
 
     /// `challenge_hash`` is the universal hash 
@@ -295,23 +350,6 @@ impl RAAACode {
     /// 
     pub fn calc_consistency_check(challenge_hash: &FrVec, u_cols: &FrMatrix, v_cols: &FrMatrix) -> (FrVec, FrVec) {
         (challenge_hash * u_cols, challenge_hash * v_cols)
-    }
-    /// `challenge_hash`` is the universal hash 
-    /// `consistency_check` is the value returned frmo `calc_consistency_check`
-    /// `deltas` and `q` are the verifier's deltas and q
-    /// encoder
-    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
-    /// TODO: generics instead of RAAACode. And ofc generics for field
-    pub fn verify_consistency_check(challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix, code: RAAACode,) -> Result<(), Error> {
-        let u_hash = &consistency_check.0;
-        let v_hash = &consistency_check.1;
-        let q_hash = challenge_hash * q_cols;
-        let u_hash_x_generator_x_diag_delta = &code.encode(u_hash) * deltas;
-        if (*v_hash != &q_hash - &u_hash_x_generator_x_diag_delta) {
-            Err(anyhow!("Consistency check fail!"))
-        } else {
-            Ok(())
-        }
     }
 
 #[cfg(test)]
@@ -433,6 +471,14 @@ mod test {
         assert!(code.encode(&new_us.0[15]) * deltas + v_rows.0[15].clone() == new_qs.0[15]);
     }
 
+    #[test]
+    fn check_parity() {
+        todo!()
+    }
+    #[test]
+    fn check_parity_batch() {
+        todo!()
+    }
     #[test]
     fn consistency_check() {
         todo!()

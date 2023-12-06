@@ -18,15 +18,15 @@ impl R1CS {
 }
 #[derive(Clone)]
 pub struct R1CSWithMetadata {
-    r1cs: R1CS,
-    public_inputs_indices: Vec<usize>,
-    public_outputs_indices: Vec<usize>
+    pub r1cs: R1CS,
+    pub public_inputs_indices: Vec<usize>,
+    pub public_outputs_indices: Vec<usize>
 }
 
 pub mod quicksilver {
     use anyhow::{Error, anyhow};
 
-    use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul};
+    use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul, actors::actors::PublicOpenings};
 
     use super::{R1CS, R1CSWithMetadata};
 
@@ -106,7 +106,13 @@ pub mod quicksilver {
             
 
         }
-    }
+        /// Opens VOLE correlations at public indices
+        pub fn open_public(&self, indices: &Vec<usize>) -> Vec<(Fr, Fr)>{
+            indices.iter().map(|i|{
+                ( self.u.0[*i], self.v.0[*i] )
+            }).collect()
+        }
+     }
 
     /// Creates a vector [challenge, challenge^2, challenge^3, ..., challenge^length]
     fn get_challenge_vec(challenge: &Fr, length: usize) -> FrVec {
@@ -153,7 +159,11 @@ pub mod quicksilver {
                 false => Err(anyhow!("Proof was not verified with success"))
             }
         }
-    }
+        /// Verifies the non-ZK proof of opening for the witness' public values. Can this even be done by the verifier without referencing the underlying subspace VOLE?
+        pub fn verify_public(&self, pos: &PublicOpenings) -> Result<(), Error> {
+            todo!("Can this even be done by the verifier without referencing the underlying subspace VOLE?")
+        }
+    } 
 }
 
 #[cfg(test)]

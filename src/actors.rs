@@ -1,10 +1,10 @@
 ///! Provides the prover and verifier structs
 pub mod actors {
-    use anyhow::{Error, anyhow};
+    use anyhow::{Error, anyhow, Ok};
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check, verify_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self}, ScalarMul, challenges::{challenge_from_seed, calc_deltas}};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_deltas, calc_quicksilver_challenge}};
 
 
 pub struct Prover {
@@ -12,6 +12,8 @@ pub struct Prover {
     pub vole_length: usize,
     pub num_voles: usize,
     pub witness: FrMatrix,
+    /// Commitment to the witness set after the prover makes the subspace VOLE
+    pub witness_comm: Option<FrMatrix>,
     pub circuit: R1CSWithMetadata,
     /// Starts as None, added when the prover makes the subsapce VOLE
     pub subspace_vole_secrets: Option<SubspaceVOLESecrets>,
@@ -19,6 +21,7 @@ pub struct Prover {
     pub seed_commitment: Option<[u8; 32]>
 }
 pub struct Verifier {
+    pub circuit: R1CSWithMetadata,
     pub code: RAAACode, 
     pub num_voles: usize,
     pub vole_length: usize,
@@ -46,8 +49,9 @@ pub struct ProverCommitment {
     /// Hash of every pair of seed's respective hashes for the seeds used to create the VOLEs. We are just using two seeds per VOLE!
     /// Can/should be used for Fiat-Shamir of subspace VOLE consistency check
     pub seed_comm: [u8; 32],
-    /// Witness split into vectors of the same length as the code's dimension
+    /// l x k Witness split into vectors of the same length as the code's dimension k and commmited by substracting them from the first l rows of u1
     pub witness_comm: FrMatrix,
+    pub subspace_vole_correction: FrMatrix,
     /// subsapce VOLE consistency check of U and V's check values, respectively
     pub consistency_check: (FrVec, FrVec)
 }
@@ -55,7 +59,10 @@ pub struct ProverCommitment {
 pub struct Proof {
     pub zkp: ZKP,
     // pub prover_commitment: ProverCommitment,
-    pub prover_opening: SubspaceVOLEOpening,
+    /// Opening of the seeds the verifier needs for subspace VOLE
+    pub seed_openings: SubspaceVOLEOpening,
+    /// Public input and output (u, v) tuples
+    pub public_openings: PublicOpenings,
     /// The VitH S matrix 
     pub s_matrix: FrMatrix,
 }
@@ -103,7 +110,7 @@ impl Prover {
                     - 
                     &self.witness;
 
-
+        self.witness_comm = Some(witness_comm.clone());
         if !(self.code.q % self.num_voles == 0) {return Err(anyhow!("invalid num_voles param")) };
         let challenge_hash = challenge_from_seed(&seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
         let consistency_check = calc_consistency_check(&challenge_hash, &new_u_rows.transpose(), &v_cols);
@@ -139,7 +146,8 @@ impl Prover {
         Ok(ProverCommitment { 
             seed_comm, 
             witness_comm,
-            consistency_check
+            consistency_check,
+            subspace_vole_correction: correction
         })
     }
     // /// Called as part of proof()
@@ -154,23 +162,26 @@ impl Prover {
     /// Returns none if it lacks 
     fn s_matrix(&self, vith_delta: &Fr) -> Result<FrMatrix, Error> {
         let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
-        // let vith_delta = self.vith_delta.as_ref().ok_or(anyhow!("ZKP must be completed before this step"))?;
-
         Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
     }
 
-    /// INSECURE UNTIL `prover.prove` uses a proper challenge and public openings
     /// Wrapper for all other prover functions
-    fn proof(&mut self) -> Result<Proof, Error> {
-        let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
-        let seed_comm = self.seed_commitment.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
+    fn prove(&mut self) -> Result<Proof, Error> {
+        let err_uncompleted = ||anyhow!("VOLE must be completed before this step");
+        let svs = self.subspace_vole_secrets.as_ref().ok_or(err_uncompleted())?;
+        let seed_comm = self.seed_commitment.as_ref().ok_or(err_uncompleted())?;
+        let witness_comm = self.witness_comm.as_ref().ok_or(err_uncompleted())?;
         // TODO: without so much cloning
         let prover = quicksilver::Prover::from_vith(svs.u1.clone(), svs.u2.clone(), self.witness.clone(), self.circuit.clone());
-        // TODO: calculate the challenge correctly
-        let zkp = prover.prove(&Fr::from_u128(12345)); 
-        // TODO: calculate the openings correctly
-        let openings = todo!();
-        let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles, openings);
+        let challenge = calc_quicksilver_challenge(seed_comm, &witness_comm);
+        let zkp = prover.prove(&challenge); 
+
+        let public_openings = PublicOpenings {
+            public_inputs: prover.open_public(&self.circuit.public_inputs_indices),
+            public_outputs: prover.open_public(&self.circuit.public_outputs_indices)
+        };
+        
+        let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles, &public_openings);
         let s_matrix = self.s_matrix(&vith_delta)?;
 
         let mut openings = Vec::with_capacity(self.num_voles);
@@ -185,8 +196,9 @@ impl Prover {
         Ok(
             Proof { 
                 zkp, 
-                prover_opening : SubspaceVOLEOpening { seed_opens: openings, seed_proofs: opening_proofs },
-                s_matrix
+                s_matrix,
+                public_openings,
+                seed_openings : SubspaceVOLEOpening { seed_opens: openings, seed_proofs: opening_proofs },
             }
         )
     }
@@ -194,32 +206,69 @@ impl Prover {
 }
 
 impl Verifier {
-    /// Perform consistency check and store commitments correction values
-    fn process_subspace_vole(&self, c: &ProverCommitment) -> Result<(), Error> {
-        let challenge_hash = &challenge_from_seed(&c.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
-        let result = verify_consistency_check(challenge_hash, &c.consistency_check, &self.subspace_vole_deltas, q_cols, self.code);
-        todo!()
+    // /// Does not perform consistency check. Simple stores commitments that can later be 
+    // fn process_subspace_vole(&self, c: &ProverCommitment) -> Result<(), Error> {
+    //     let deltas = &self.subspace_vole_deltas.ok_or(anyhow!("VOLE not com"))?;
+    //     let challenge_hash = &challenge_from_seed(&c.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
+    //     let result = verify_consistency_check(challenge_hash, &c.consistency_check, &self.subspace_vole_deltas.ok_or(err), q_cols, self.code);
+    //     todo!()
 
-    }
-    /// Checks the ZKP and sets the seed for the Fiat-shamir according to the ZKP
-    fn process_zkp() -> Result<(), Error> {
-        todo!()
-    }
-    /// Once all the prover inputs have been processed and deltas have been set, checks the public openings and VOLEs
-    fn verify_vole_and_public_openings(&mut self, proof: &Proof) -> FrVec {
-        todo!()
+    // }
+    // /// Checks the ZKP and sets the seed for the Fiat-shamir according to the ZKP
+    // fn process_zkp() -> Result<(), Error> {
+    //     todo!()
+    // }
+    // /// Once all the prover inputs have been processed and deltas have been set, checks the public openings and VOLEs
+    // fn verify_vole_and_public_openings(&mut self, proof: &Proof) -> FrVec {
+    //     todo!()
+    // }
+
+    /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
+    fn verify(&self, comm: &ProverCommitment, proof: &Proof) -> Result<PublicOpenings, Error> {
+        let (delta_choices, vith_delta) = calc_deltas(&comm.seed_comm, &proof.zkp, self.num_voles, &proof.public_openings);
+        let mut deltas = Vec::<Fr>::with_capacity(self.num_voles);
+        let mut q = Vec::<FrVec>::with_capacity(self.num_voles);
+        // Calculate small VOLE outputs then check they were all commited to in comm.seed_comm 
+        let mut hasher = blake3::Hasher::new();
+        for i in 0..self.num_voles {
+            let rec = reconstruct_commitment(
+                &proof.seed_openings.seed_opens[i], 
+                delta_choices[i] != 0, // Convert usize that should be 0 or 1 to bool
+                &proof.seed_openings.seed_proofs[i]
+            );
+            hasher.update(&rec);
+            let vole_outs = VOLE::verifier_outputs(&proof.seed_openings.seed_opens[i], delta_choices[i] == 0, self.vole_length);
+            deltas.push(vole_outs.delta);
+            q.push(vole_outs.q);
+            
+        }
+        if !(*hasher.finalize().as_bytes() == comm.seed_comm) { return Err(anyhow!("Seed commitment is not a commitment to the seeds")) }
+        
+        // Construct the subspace VOLE
+        let deltas = &FrVec(deltas);
+        let new_q = self.code.correct_verifier_qs(&FrMatrix((q)), deltas, &comm.subspace_vole_correction);
+        // Check that its outputs are in the subspace 
+        let challenge_hash = &challenge_from_seed(&comm.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
+        self.code.verify_consistency_check(challenge_hash, &comm.consistency_check, deltas, &new_q)?;
+        // Check S matrix is in the subspace as well 
+        // IF TESTS FAIL CHECK THESE ARE ROWS VS. COLUMNS
+        self.code.check_parity_batch(&proof.s_matrix.0)?;
+        // Verify the ZKP
+        let zk_verifier = quicksilver::Verifier::from_vith(new_q.transpose(), vith_delta.clone(), self.circuit.clone());
+        let quicksilver_challenge = calc_quicksilver_challenge(&comm.seed_comm, &comm.witness_comm);
+        zk_verifier.verify(&quicksilver_challenge, &proof.zkp)?;
+        zk_verifier.verify_public(&proof.public_openings)?;
+        Ok(proof.public_openings.clone())
     }
 
     
 }
 
 /// Values of the witness that the prover opens
+#[derive(Clone, Debug)]
 pub struct PublicOpenings {
     pub public_inputs: Vec<(Fr, Fr)>,
     pub public_outputs: Vec<(Fr, Fr)>
 }
 
-fn opening_challenges() {
-
-}
 }
