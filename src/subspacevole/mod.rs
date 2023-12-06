@@ -1,8 +1,8 @@
 use std::{usize, result};
 use anyhow::{Error, anyhow};
 use num_traits::ToBytes;
-use rand::Rng;
-use rand::rngs::ThreadRng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::{ThreadRng, StdRng};
 use crate::{Fr, FrVec, FrMatrix};
 use crate::ff::Field;
 
@@ -162,9 +162,14 @@ impl RAAACode {
         FrVec(out)
     }
     /// Returns a uniform permutation and its inverse
-    pub fn random_interleave_permutations(len: usize) -> (Vec<usize>, Vec<usize>) {
+    /// It will be deterministic if and only if a seed is provided
+    pub fn random_interleave_permutations(len: usize, seed: Option<[u8; 32]>) -> (Vec<usize>, Vec<usize>) {
         let range = 0..len;
-        let mut rng = ThreadRng::default();
+        let mut rng = match seed { 
+            Some(s) => StdRng::from_seed(s),
+            None => StdRng::from_rng(&mut rand::thread_rng()).unwrap()
+        };
+        // let mut rng = ThreadRng::default();
         let mut forward = Vec::with_capacity(len);
         let mut backward = vec![0; len];
         let mut avail_indices = range.clone().collect::<Vec<usize>>();
@@ -179,19 +184,25 @@ impl RAAACode {
 
     /// Creates an RAAA code of the default parameters 
     pub fn rand_default() -> RAAACode {
+        
+        let interleave_seeds = (0..3).map(|i|{
+            *blake3::hash(
+            format!("VOLE in the head RAAA code interleave {}", i).as_bytes()
+            ).as_bytes()
+        }).collect::<Vec<[u8; 32]>>();
         let permutations = [
-            RAAACode::random_interleave_permutations(1024),
-            RAAACode::random_interleave_permutations(1024),
-            RAAACode::random_interleave_permutations(1024),
+            RAAACode::random_interleave_permutations(1024, Some(interleave_seeds[0])),
+            RAAACode::random_interleave_permutations(1024, Some(interleave_seeds[1])),
+            RAAACode::random_interleave_permutations(1024, Some(interleave_seeds[2])),
         ];
         RAAACode { permutations, q: 2 }
     }
-    /// Block size under roughly 1024 for current code is unsafe 
+    /// For testing. Note that block size under roughly 1024 for current code may not give 128 bits of security
     pub fn rand_with_parameters(block_size: usize, q: usize) -> Self {
         let permutations = [
-            RAAACode::random_interleave_permutations(block_size),
-            RAAACode::random_interleave_permutations(block_size),
-            RAAACode::random_interleave_permutations(block_size),
+            RAAACode::random_interleave_permutations(block_size, None),
+            RAAACode::random_interleave_permutations(block_size, None),
+            RAAACode::random_interleave_permutations(block_size, None),
         ];
         RAAACode { permutations, q }
     }
@@ -432,7 +443,7 @@ mod test {
     #[test]
     fn test_serialize_deserialize() {
         let code = RAAACode {
-            permutations: [RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6)],
+            permutations: [RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None)],
             q: 2
         };
         // let code = RAAACode::rand_default();
@@ -444,7 +455,7 @@ mod test {
 
     #[test]
     fn test_permutation_and_inverse() {
-        let (forward, backward) = RAAACode::random_interleave_permutations(5);
+        let (forward, backward) = RAAACode::random_interleave_permutations(5, None);
         let input = (0..5).map(|_|Fr::random(&mut ThreadRng::default())).collect();
         let input = FrVec(input);
         let permuted = RAAACode::interleave(&input, &forward);
@@ -553,7 +564,7 @@ mod test {
     #[test]
     fn check_parity() {
         let code = RAAACode {
-            permutations: [RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6)],
+            permutations: [RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None)],
             q: 2
         };
         let input = FrVec::random(3);

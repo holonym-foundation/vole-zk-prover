@@ -79,6 +79,7 @@ pub struct SubspaceVOLEOpening {
 }
 
 impl Prover {
+    fn from_witness_circuit(witness: &Vec<Fr>, circuit: &R1CSWithMetadata) {}
     /// Called first
     /// Mutates self to contain secret artifacts, returning a commitment
     // THOROUGHLY CHECK AND TEST IT GETS THE DIMENSIONS OF U, V, U1, U2, V1, V2, WITNESS, ETC. CORRECT
@@ -275,8 +276,10 @@ pub struct PublicOpenings {
 
 #[cfg(test)]
 mod test {
+    use crate::subspacevole::RAAACode;
+
     use super::*;
     fn prover_verifier_full_integration() {
-        todo!()
+        let code = RAAACode::rand_default();
     }
 }
