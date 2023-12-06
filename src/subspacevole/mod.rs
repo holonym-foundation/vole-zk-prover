@@ -296,7 +296,6 @@ impl RAAACode {
         let in1_inv = Self::interleave(&acc1_inv, &self.permutations[1].1);
         let acc0_inv = Self::accumulate_inverse(&in1_inv);
         let should_be_repeated = Self::interleave(&acc0_inv, &self.permutations[0].1);     
-        println!("should be repeated: {:?}", should_be_repeated);
        // Check that the reuslt is a codeword for the repetition code
         let len = should_be_repeated.0.len();
         assert!(len % self.q == 0, "length must be divisible by q");
@@ -492,7 +491,10 @@ mod test {
     }
     #[test]
     fn check_parity_batch() {
-        todo!()
+        let code = RAAACode::rand_default();
+        let input: Vec<FrVec> = (0..10).map(|_|FrVec::random(512)).collect();
+        let codewords: Vec<FrVec> = input.iter().map(|x|code.encode(x)).collect();
+        assert!(code.check_parity_batch(&codewords).is_ok());
     }
     #[test]
     fn consistency_check() {
