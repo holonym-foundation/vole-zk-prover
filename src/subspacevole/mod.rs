@@ -1,5 +1,6 @@
 use std::{usize, result};
 use anyhow::{Error, anyhow};
+use num_traits::ToBytes;
 use rand::Rng;
 use rand::rngs::ThreadRng;
 use crate::{Fr, FrVec, FrMatrix};
@@ -9,6 +10,7 @@ use crate::ff::Field;
 //     // pub static ref RAAA_CODE: RAAACode = RAAACode::deserialize(bytes)
 // }
 
+#[derive(Debug, PartialEq)]
 pub struct RAAACode {
     /// Forward and reverse permutations required for interleave and inverting interleave each time
     /// In order of when the interleaves are applied (e.g. 0th is after repetition and 2nd is before final accumulation)
@@ -193,11 +195,74 @@ impl RAAACode {
         ];
         RAAACode { permutations, q }
     }
-    pub fn serialize<T: AsRef<[u8]>>(&self) -> T {
-        todo!()
+    /// Returns an array of u8s. Every four u8s represents a little-endian value. While these values are usizes for indexing, they should be small.
+    /// If a usize go beyond the max u32 value, this returns an error.
+    /// Codes should not be so large that they overflow a u32 so it is unlikely this will return an error.
+    /// The four-byte chunks are as follows
+    /// 0th: Number of repetitions for the repetition code, i.e. the code's `q` parameter
+    /// 1st: Number of interleave*accumulates. For the foreseeable future 3 seems optimal and this is fixed at 3.
+    /// 2nd: Length of codewords, i.e. the code's `n`
+    /// [3rd , `n`+3rd): The first interleave permutation
+    /// [`n`+3rd, `2n`+3rd): The first interleave permutation's inverse
+    /// [2`n`+3rd , 3`n`+3rd): The second interleave permutation
+    /// [3`n`+3rd , 4`n`+3rd): The second interleave permutation's inverse
+    /// [4`n`+3rd , 5`n`+3rd): The third interleave permutation
+    /// [5`n`+3rd , 6`n`+3rd): The third interleave permutation's inverse
+    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
+        let mut usizes: Vec<usize> = Vec::with_capacity(
+            3 + self.permutations[0].0.len() * 2 * self.permutations.len()
+        );
+
+        usizes.push(self.q.clone());
+        usizes.push(self.permutations.len());
+        usizes.push(self.permutations[0].0.len());
+        self.permutations.iter().for_each(|x|{
+            usizes.append(&mut x.0.clone());
+            usizes.append(&mut x.1.clone());
+        });
+
+        if !usizes.iter().all(|u| *u <= u32::MAX as usize) {
+            return Err(anyhow!("overflow"))
+        }
+
+        let mut u8s: Vec<u8> = Vec::with_capacity(usizes.len()*4);
+
+        usizes.iter().for_each(|u|{
+            u8s.append(&mut u.to_le_bytes()[0..4].to_vec())
+        });
+        
+        Ok(u8s)
     }
-    pub fn deserialize<T>(bytes: T) -> Self {
-        todo!()
+    pub fn deserialize<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
+        let bytes = bytes.as_ref();
+        if !(bytes.len() % 4 == 0) { return Err(anyhow!("input length must be divisible by 4")) }
+        let l = bytes.len() / 4;
+
+        let mut usizes = Vec::with_capacity(l);
+        let mut idx_start = 0;
+        for i_ in 0..l {
+            usizes.push(u32::from_le_bytes(bytes[idx_start..idx_start+4].try_into().unwrap()) as usize);
+            idx_start +=4;
+        }  
+        
+        if usizes[1] != 3 { return  Err(anyhow!("only 3 interleaved accumulators are supported now")) }
+        let nperms = usizes[1];
+        let codeword_len = usizes[2];
+
+        let perms: Vec<(Vec<usize>, Vec<usize>)> = (0..nperms).map(|i| {
+            let start0 = 3 + i*codeword_len*2;
+            let start1 = start0 + codeword_len;
+            let end = start1 + codeword_len;
+            (   
+                // TODO: error instead of panic
+                usizes.get(start0..start1).expect("Permutation is too short").to_vec(), 
+                usizes.get(start1..end).expect("Permutation is too short").to_vec()
+            )
+        }).collect();
+        Ok(Self {
+            q: usizes[0],
+            permutations: perms.try_into().unwrap() // Shouldn't panic since legnth is gauranteed 3
+        })
     }
 
     /// Converts a vector to its codeword
@@ -363,6 +428,20 @@ mod test {
     use crate::{FrRepr, smallvole::{self, VOLE, TestMOLE}};
 
     use super::*;
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let code = RAAACode {
+            permutations: [RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6), RAAACode::random_interleave_permutations(6)],
+            q: 2
+        };
+        // let code = RAAACode::rand_default();
+        let s = code.serialize().unwrap();
+        let d = RAAACode::deserialize(&s).unwrap();
+        assert!(d == code);
+    }
+
+
     #[test]
     fn test_permutation_and_inverse() {
         let (forward, backward) = RAAACode::random_interleave_permutations(5);
