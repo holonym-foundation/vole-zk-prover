@@ -3,12 +3,89 @@ use anyhow::{Error, anyhow};
 use num_traits::ToBytes;
 use rand::{Rng, SeedableRng};
 use rand::rngs::{ThreadRng, StdRng};
-use crate::{Fr, FrVec, FrMatrix};
+use crate::{Fr, FrVec, FrMatrix, NUM_VOLES};
 use crate::ff::Field;
 
 // lazy_static! {
 //     // pub static ref RAAA_CODE: RAAACode = RAAACode::deserialize(bytes)
 // }
+
+pub trait LinearCode {
+    fn k(&self) -> usize;
+    fn n(&self) -> usize;
+    fn encode(&self, vec: &FrVec) -> FrVec;
+    fn encode_extended(&self, vec: &FrVec) -> FrVec;
+    fn check_parity(&self, putative_codeword: &FrVec) -> bool;
+    fn check_parity_batch(&self, putative_codewords: &Vec<FrVec>) -> Result<(), Error> {
+        match putative_codewords.iter().all(|pc|self.check_parity(pc)) {
+            true => Ok(()),
+            false => Err(anyhow!("Parity check failure"))
+        }
+    }
+
+    fn mul_vec_by_extended_inverse(&self, u: &FrVec) -> FrVec;
+        fn batch_encode_extended(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
+        matrix.iter().map(|x|self.encode_extended(x)).collect()
+    }
+    /// Calculates the prover's correction value for the whole U matrix
+    fn mul_matrix_by_extended_inverse(&self, old_us: &FrMatrix) -> Vec<FrVec> {
+        old_us.0.iter().map(|u|self.mul_vec_by_extended_inverse(u)).collect()
+    }
+    /// Returns (U, C) where U is the prover's correct U and C the correction value to send to verifier
+    /// k is the dimension of the code
+    fn get_prover_correction(&self, old_us: &FrMatrix) -> (FrMatrix, FrMatrix) {
+        let l = old_us.0[0].0.len();
+        let start_idx = self.k();
+        let full_size = self.mul_matrix_by_extended_inverse(old_us);
+        
+        (
+            FrMatrix(full_size.iter().map(|u|FrVec(u.0[0..start_idx].to_vec())).collect()),
+            FrMatrix(full_size.iter().map(|u|FrVec(u.0[start_idx..].to_vec())).collect())
+        )
+    }
+
+    /// Corrects the verifier's Q matrix give the prover's correction
+    fn correct_verifier_qs(&self, old_qs: &FrMatrix, deltas: &FrVec, correction: &FrMatrix) -> FrMatrix {
+        // Concatenate zero matrix with C as in the subsapace VOLE protocol:
+        let l = old_qs.0[0].0.len();
+        let correction_len = correction.0[0].0.len();
+        let zero_len = l - correction_len;
+        let zeroes_cons_c = (0..old_qs.0.len()).map(|i|{
+            let mut out = Vec::with_capacity(l);
+            out.append(&mut vec![Fr::ZERO; zero_len]);
+            out.append(&mut correction.0[i].0.clone());
+            FrVec(out)
+        }).collect::<Vec<FrVec>>();
+        
+        let times_extended_generator = self.batch_encode_extended(&zeroes_cons_c);
+        let times_deltas = times_extended_generator.iter().map(|x| {
+            x * deltas
+            //x.0.iter().zip(deltas.0.iter()).map(|(a, b)| a * b)
+        }).collect::<Vec<FrVec>>();
+        FrMatrix(
+            old_qs.0.iter().zip(&times_deltas).map(|(q, t)|q - t).collect()
+        )
+    }
+    /// `challenge_hash`` is the universal hash 
+    /// `consistency_check` is the value returned frmo `calc_consistency_check`
+    /// `deltas` and `q` are the verifier's deltas and q
+    /// encoder
+    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
+    /// TODO: generics instead of RAAACode. And ofc generics for field
+    fn verify_consistency_check(&self, challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix) -> Result<(), Error> {
+        let u_hash = &consistency_check.0;
+        let v_hash = &consistency_check.1;
+        let q_hash = challenge_hash * q_cols;
+        let u_hash_x_generator_x_diag_delta = &self.encode(u_hash) * deltas;
+        if (*v_hash != &q_hash - &u_hash_x_generator_x_diag_delta) {
+            Err(anyhow!("Consistency check fail!"))
+        } else {
+            Ok(())
+        }
+    }
+
+}
+
 
 #[derive(Debug, PartialEq)]
 pub struct RAAACode {
@@ -191,9 +268,9 @@ impl RAAACode {
             ).as_bytes()
         }).collect::<Vec<[u8; 32]>>();
         let permutations = [
-            RAAACode::random_interleave_permutations(1024, Some(interleave_seeds[0])),
-            RAAACode::random_interleave_permutations(1024, Some(interleave_seeds[1])),
-            RAAACode::random_interleave_permutations(1024, Some(interleave_seeds[2])),
+            RAAACode::random_interleave_permutations(NUM_VOLES, Some(interleave_seeds[0])),
+            RAAACode::random_interleave_permutations(NUM_VOLES, Some(interleave_seeds[1])),
+            RAAACode::random_interleave_permutations(NUM_VOLES, Some(interleave_seeds[2])),
         ];
         RAAACode { permutations, q: 2 }
     }
@@ -275,9 +352,18 @@ impl RAAACode {
             permutations: perms.try_into().unwrap() // Shouldn't panic since legnth is gauranteed 3
         })
     }
+}
 
+impl LinearCode for RAAACode {
+    fn k(&self) -> usize {
+        assert!(self.n() % self.q == 0, "n must be a multiple of q");
+        return self.n() / self.q;
+    }
+    fn n(&self) -> usize {
+        self.permutations[0].0.len()
+    }
     /// Converts a vector to its codeword
-    pub fn encode(&self, vec: &FrVec) -> FrVec {
+    fn encode(&self, vec: &FrVec) -> FrVec {
         let repeated = Self::repeat(vec, self.q);
         let in0 = Self::interleave(&repeated, &self.permutations[0].0);
         let acc0 = Self::accumulate(&in0);
@@ -290,7 +376,7 @@ impl RAAACode {
     }
 
     /// Multiplies a single vector by the Tc matrix, the extended codeword generator to be invertible
-    pub fn encode_extended(&self, vec: &FrVec) -> FrVec {
+    fn encode_extended(&self, vec: &FrVec) -> FrVec {
         let repeated = Self::repeat_extended(vec, self.q);
         let in0 = Self::interleave(&repeated, &self.permutations[0].0);
         let acc0 = Self::accumulate(&in0);
@@ -300,10 +386,6 @@ impl RAAACode {
         let acc2 = Self::accumulate(&in2);
 
         acc2
-    }
-
-    pub fn batch_encode_extended(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
-        matrix.iter().map(|x|self.encode_extended(x)).collect()
     }
 
     /// Returns a single u vector multiplied by the Tc^-1 matrix (the extended generator matrix that is invertible). 
@@ -319,52 +401,9 @@ impl RAAACode {
         re_inv
     }
 
-    /// Calculates the prover's correction value for the whole U matrix
-    fn mul_matrix_by_extended_inverse(&self, old_us: &FrMatrix) -> Vec<FrVec> {
-        old_us.0.iter().map(|u|self.mul_vec_by_extended_inverse(u)).collect()
-    }
-
-    /// Returns (U, C) where U is the prover's correct U and C the correction value to send to verifier
-    /// k is the dimension of the code
-    pub fn get_prover_correction(&self, old_us: &FrMatrix) -> (FrMatrix, FrMatrix) {
-        let l = old_us.0[0].0.len();
-        assert!(l % self.q == 0, "block length is not a product of q");
-        let start_idx = l / self.q;
-        let full_size = self.mul_matrix_by_extended_inverse(old_us);
-        
-        (
-            FrMatrix(full_size.iter().map(|u|FrVec(u.0[0..start_idx].to_vec())).collect()),
-            FrMatrix(full_size.iter().map(|u|FrVec(u.0[start_idx..].to_vec())).collect())
-        )
-    }
-
-    /// Corrects the verifier's Q matrix give the prover's correction
-    pub fn correct_verifier_qs(&self, old_qs: &FrMatrix, deltas: &FrVec, correction: &FrMatrix) -> FrMatrix {
-        // Concatenate zero matrix with C as in the subsapace VOLE protocol:
-        let l = old_qs.0[0].0.len();
-        assert!(l % self.q == 0, "block length is not a product of q");
-        let correction_len = correction.0[0].0.len();
-        let zero_len = l - correction_len;
-        let zeroes_cons_c = (0..old_qs.0.len()).map(|i|{
-            let mut out = Vec::with_capacity(l);
-            out.append(&mut vec![Fr::ZERO; zero_len]);
-            out.append(&mut correction.0[i].0.clone());
-            FrVec(out)
-        }).collect::<Vec<FrVec>>();
-        
-        let times_extended_generator = self.batch_encode_extended(&zeroes_cons_c);
-        let times_deltas = times_extended_generator.iter().map(|x| {
-            x * deltas
-            //x.0.iter().zip(deltas.0.iter()).map(|(a, b)| a * b)
-        }).collect::<Vec<FrVec>>();
-        FrMatrix(
-            old_qs.0.iter().zip(&times_deltas).map(|(q, t)|q - t).collect()
-        )
-    }
-
     /// SECURITY TODO: (for audit?) check this is sufficient for determining whether something is a RAAA codeword
     /// For partity check, you can invert the accumulations and permutations and then check the result is in the subspace of the repetition code
-    pub fn check_parity(&self, putative_codeword: &FrVec) -> bool {
+    fn check_parity(&self, putative_codeword: &FrVec) -> bool {
         // Invet all the operations until the initial repetition code
         let acc2_inv = Self::accumulate_inverse(&putative_codeword);
         let in2_inv = Self::interleave(&acc2_inv, &self.permutations[2].1);
@@ -388,44 +427,17 @@ impl RAAACode {
         true
 
     }
-
-    pub fn check_parity_batch(&self, putative_codewords: &Vec<FrVec>) -> Result<(), Error> {
-        match putative_codewords.iter().all(|pc|self.check_parity(pc)) {
-            true => Ok(()),
-            false => Err(anyhow!("Parity check failure"))
-        }
-    }
-
-
-    /// `challenge_hash`` is the universal hash 
-    /// `consistency_check` is the value returned frmo `calc_consistency_check`
-    /// `deltas` and `q` are the verifier's deltas and q
-    /// encoder
-    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
-    /// TODO: generics instead of RAAACode. And ofc generics for field
-    pub fn verify_consistency_check(&self, challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix) -> Result<(), Error> {
-        let u_hash = &consistency_check.0;
-        let v_hash = &consistency_check.1;
-        let q_hash = challenge_hash * q_cols;
-        let u_hash_x_generator_x_diag_delta = &self.encode(u_hash) * deltas;
-        if (*v_hash != &q_hash - &u_hash_x_generator_x_diag_delta) {
-            Err(anyhow!("Consistency check fail!"))
-        } else {
-            Ok(())
-        }
-    }
-
-
 }
 
-    /// `challenge_hash`` is the universal hash 
-    /// `u` and `v` are the prover's u and v values
-    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
-    /// Returns (challenge_hash*u, challenge_hash*v)
-    /// 
-    pub fn calc_consistency_check(challenge_hash: &FrVec, u_cols: &FrMatrix, v_cols: &FrMatrix) -> (FrVec, FrVec) {
-        (challenge_hash * u_cols, challenge_hash * v_cols)
-    }
+
+/// `challenge_hash`` is the universal hash 
+/// `u` and `v` are the prover's u and v values
+/// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
+/// Returns (challenge_hash*u, challenge_hash*v)
+/// 
+pub fn calc_consistency_check(challenge_hash: &FrVec, u_cols: &FrMatrix, v_cols: &FrMatrix) -> (FrVec, FrVec) {
+    (challenge_hash * u_cols, challenge_hash * v_cols)
+}
 
 #[cfg(test)]
 mod test {

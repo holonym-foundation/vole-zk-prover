@@ -18,6 +18,9 @@ use subspacevole::RAAACode;
 extern crate ff;
 use crate::ff::PrimeField;
 
+/// Important that it is the block size of the linear code
+const NUM_VOLES: usize = 1024;
+
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617"]
 #[PrimeFieldGenerator = "7"]

@@ -23,6 +23,11 @@ pub struct R1CSWithMetadata {
     pub public_outputs_indices: Vec<usize>
 }
 
+impl R1CSWithMetadata {
+    pub fn zero_pad(&mut self, new_len: usize) {
+        todo!()
+    }
+}
 pub mod quicksilver {
     use anyhow::{Error, anyhow};
 

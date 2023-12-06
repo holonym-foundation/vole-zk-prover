@@ -4,7 +4,8 @@ pub mod actors {
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_deltas, calc_quicksilver_challenge}};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check, LinearCode}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_deltas, calc_quicksilver_challenge}, NUM_VOLES};
+
 
 
 pub struct Prover {
@@ -79,7 +80,20 @@ pub struct SubspaceVOLEOpening {
 }
 
 impl Prover {
-    fn from_witness_circuit(witness: &Vec<Fr>, circuit: &R1CSWithMetadata) {}
+    // /// Pads a witness and circuit to dimensions compatible with VitH and the linear code, then creates a prover
+    // /// Witness of length w is padded to length l where l is a multiple of a linear code's input length. creates a VOLE of length 2l+2
+    // fn from_witness_and_circuit_unpadded(witness: Vec<Fr>, circuit: R1CSWithMetadata) {
+    //     let code = RAAACode::rand_default();
+    //     let code.
+    //     Self {
+    //         num_voles: NUM_VOLES,
+    //         code,
+    //         circuit: circuit,
+    //         seed_commitment: None,
+    //         subspace_vole_secrets: None,
+    //         witness_comm: None,
+    //     }
+    // }
     /// Called first
     /// Mutates self to contain secret artifacts, returning a commitment
     // THOROUGHLY CHECK AND TEST IT GETS THE DIMENSIONS OF U, V, U1, U2, V1, V2, WITNESS, ETC. CORRECT
@@ -281,5 +295,6 @@ mod test {
     use super::*;
     fn prover_verifier_full_integration() {
         let code = RAAACode::rand_default();
+        todo!()
     }
 }
