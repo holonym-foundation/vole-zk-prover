@@ -238,22 +238,33 @@ impl Prover {
 }
 
 impl Verifier {
-    // /// Does not perform consistency check. Simple stores commitments that can later be 
-    // fn process_subspace_vole(&self, c: &ProverCommitment) -> Result<(), Error> {
-    //     let deltas = &self.subspace_vole_deltas.ok_or(anyhow!("VOLE not com"))?;
-    //     let challenge_hash = &challenge_from_seed(&c.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
-    //     let result = verify_consistency_check(challenge_hash, &c.consistency_check, &self.subspace_vole_deltas.ok_or(err), q_cols, self.code);
-    //     todo!()
+    /// Calculates the dimensions of the vole and pads the circuit. 
+    fn from_circuit(mut circuit: R1CSWithMetadata) -> Self {
+        let code = RAAACode::rand_default();
+        let pp = circuit.r1cs.calc_padding_needed(NUM_VOLES);
+        circuit.r1cs.zero_pad(pp.pad_len);
+        Verifier { 
+            circuit, 
+            num_voles: code.n(), 
+            /// One extra row for the hiding of the linear combination of the relevant values in the consistency check
+            /// 2x extra rows to convert subsapce VOLE into VitH. Overall, we require 2 * `num_padded_witness_rows` + 2 rows
+            vole_length: 2 * (pp.num_padded_wtns_rows + 1),
+            code, 
+            subspace_vole_deltas: None, 
+            vith_delta: None 
+        }
+        
 
-    // }
-    // /// Checks the ZKP and sets the seed for the Fiat-shamir according to the ZKP
-    // fn process_zkp() -> Result<(), Error> {
-    //     todo!()
-    // }
-    // /// Once all the prover inputs have been processed and deltas have been set, checks the public openings and VOLEs
-    // fn verify_vole_and_public_openings(&mut self, proof: &Proof) -> FrVec {
-    //     todo!()
-    // }
+        
+    //     pub circuit: R1CSWithMetadata,
+    // pub code: RAAACode, 
+    // pub num_voles: usize,
+    // pub vole_length: usize,
+    // /// Starts as None, set during Fiat Shamir
+    // pub subspace_vole_deltas: Option<FrVec>,
+    // /// Starts as None, set during Fiat Shamir
+    // pub vith_delta: Option<Fr>
+    }
 
     /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
     fn verify(&self, comm: &ProverCommitment, proof: &Proof) -> Result<PublicOpenings, Error> {
