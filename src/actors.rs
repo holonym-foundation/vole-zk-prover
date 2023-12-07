@@ -146,6 +146,7 @@ impl Prover {
         self.witness_comm = Some(witness_comm.clone());
         if self.num_voles % self.code.q != 0 { return Err(anyhow!("invalid num_voles param")) };
         let challenge_hash = challenge_from_seed(&seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
+        println!("prover challenge hash {:?}", challenge_hash.0);
         let consistency_check = calc_consistency_check(&challenge_hash, &new_u_rows.transpose(), &v_cols);
         
 
@@ -294,6 +295,7 @@ impl Verifier {
         let new_q = self.code.correct_verifier_qs(&FrMatrix(q).transpose(), deltas, &comm.subspace_vole_correction);
         // Check that its outputs are in the subspace 
         let challenge_hash = &challenge_from_seed(&comm.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
+        println!("challenge hash {:?}", challenge_hash.0.to_vec());
         self.code.verify_consistency_check(challenge_hash, &comm.consistency_check, deltas, &new_q)?;
         // Check S matrix is in the subspace as well 
         // IF TESTS FAIL CHECK THESE ARE ROWS VS. COLUMNS

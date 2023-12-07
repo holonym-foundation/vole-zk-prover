@@ -32,7 +32,7 @@ pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> FrVec {
         // AND the two most significant bits with 00, producing a random 254 bit big-endian value
         
         let mut candidate = [
-            r.next_u64() & 0x3F,
+            r.next_u64() & 0x3FFFFFFFFFFFFFFF,
             r.next_u64(),
             r.next_u64(),
             r.next_u64(),
@@ -40,7 +40,7 @@ pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> FrVec {
 
         while u64s_overflow_field(&candidate) {
             candidate = [
-                r.next_u64() & 0x3F,
+                r.next_u64() & 0x3FFFFFFFFFFFFFFF,
                 r.next_u64(),
                 r.next_u64(),
                 r.next_u64(),
