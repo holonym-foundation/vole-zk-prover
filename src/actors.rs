@@ -124,7 +124,7 @@ impl Prover {
         for i in 0..self.num_voles {
             rng.fill_bytes(&mut seeds[i][0]);
             rng.fill_bytes(&mut seeds[i][1]);
-            seed_commitments.push(commit_seeds(&seeds[i][0], &seeds[i][0]));
+            seed_commitments.push(commit_seeds(&seeds[i][0], &seeds[i][1]));
             vole_outputs.push(smallvole::VOLE::prover_outputs(&seeds[i][0], &seeds[i][1], self.vole_length));
         }
 

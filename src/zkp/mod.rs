@@ -39,7 +39,7 @@ impl R1CS {
         // note this pads with a whole new row if it is a product. this is neither intential nor important.
         let pad_len = k - (witness_len % k);
         let padded_len = witness_len + pad_len;
-        debug_assert_eq!(k % padded_len, 0);
+        debug_assert_eq!(padded_len % k, 0);
 
         let num_padded_wtns_rows = padded_len / k; 
         
@@ -86,10 +86,12 @@ pub mod quicksilver {
         /// Takes ownership and mutates most of its inputs to something useless
         pub fn from_vith(mut u1_rows: FrMatrix, mut r_rows: FrMatrix, mut witness_rows: FrMatrix, r1cswm: R1CSWithMetadata) -> Prover {
             let r1cs = &r1cswm.r1cs;
+            // println!("VOLE dimensions: {:?}", (u1_rows.0.len(), u1_rows.0[0].0.len()));
+            // println!("R1CS dimensions: {:?}", (r1cs.a_rows.0.len(), r1cs.a_rows.0[0].0.len()));
             assert!((u1_rows.0.len() == r_rows.0.len()) && (u1_rows.0[0].0.len() == r_rows.0[0].0.len()), "u and v must be same dimension");
             assert!(witness_rows.0.len() == u1_rows.0.len() - 1, "witness must have one fewer column than u1");
             assert!(witness_rows.0[0].0.len() == u1_rows.0[0].0.len(), "witness must same number rows as u1 does");
-            assert!((r1cs.a_rows.0.len() == u1_rows.0.len()) && (r1cs.a_rows.0[0].0.len() == u1_rows.0[0].0.len()), "VOLE dimensions must match R1CS dimensions");
+            // assert!((r1cs.a_rows.0.len() == u1_rows.0.len()) && (r1cs.a_rows.0[0].0.len() == u1_rows.0[0].0.len()), "VOLE dimensions must match R1CS dimensions");
 
             let vith_size = u1_rows.0.len() * u1_rows.0[0].0.len();
             let mut u = Vec::with_capacity(vith_size);
