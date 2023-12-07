@@ -83,9 +83,10 @@ impl Prover {
     /// Pads a witness and circuit to dimensions compatible with VitH and the linear code, then creates a prover
     /// Witness of length w is padded to length l where l is a multiple of a linear code's input length. creates a VOLE of length 2l+2
     /// Mutates and destroys its inputs by padding them and taking ownership of them
-    fn from_witness_and_circuit_unpadded(mut witness: FrVec, mut circuit: R1CSWithMetadata) -> Self {
+    pub fn from_witness_and_circuit_unpadded(mut witness: FrVec, mut circuit: R1CSWithMetadata) -> Self {
         let code = RAAACode::rand_default();
-        let pp = circuit.r1cs.calc_padding_needed(NUM_VOLES);
+        let k = code.k();
+        let pp = circuit.r1cs.calc_padding_needed(k);
         witness.zero_pad(pp.pad_len);
         circuit.r1cs.zero_pad(pp.pad_len);
 
@@ -93,9 +94,9 @@ impl Prover {
         let mut start_idx = 0;
         for _i in 0..pp.num_padded_wtns_rows {
             witness_rows.push(FrVec(
-                witness.0.get(start_idx .. start_idx + NUM_VOLES).expect("This panic should not be reached").to_vec()
+                witness.0.get(start_idx .. start_idx + k).expect("This panic should not be reached").to_vec()
             ));
-            start_idx += NUM_VOLES;
+            start_idx += k;
         }
 
         Self {
@@ -114,7 +115,7 @@ impl Prover {
     /// Called first
     /// Mutates self to contain secret artifacts, returning a commitment
     // THOROUGHLY CHECK AND TEST IT GETS THE DIMENSIONS OF U, V, U1, U2, V1, V2, WITNESS, ETC. CORRECT
-    fn mkvole(&mut self) -> Result<ProverCommitment, Error> {
+    pub fn mkvole(&mut self) -> Result<ProverCommitment, Error> {
         if self.num_voles < 1024 { eprintln!("Less than 1024 VOLEs could result in <128 bits of soundness with current parameters for linear codes"); }
         let mut rng = ThreadRng::default();
         let mut seeds: Vec<[[u8; 32]; 2]> = vec![[[0u8; 32]; 2]; self.num_voles];
@@ -143,7 +144,7 @@ impl Prover {
                     &self.witness;
 
         self.witness_comm = Some(witness_comm.clone());
-        if !(self.code.q % self.num_voles == 0) {return Err(anyhow!("invalid num_voles param")) };
+        if self.num_voles % self.code.q != 0 { return Err(anyhow!("invalid num_voles param")) };
         let challenge_hash = challenge_from_seed(&seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
         let consistency_check = calc_consistency_check(&challenge_hash, &new_u_rows.transpose(), &v_cols);
         
@@ -198,7 +199,7 @@ impl Prover {
     }
 
     /// Wrapper for all other prover functions
-    fn prove(&mut self) -> Result<Proof, Error> {
+    pub fn prove(&mut self) -> Result<Proof, Error> {
         let err_uncompleted = ||anyhow!("VOLE must be completed before this step");
         let svs = self.subspace_vole_secrets.as_ref().ok_or(err_uncompleted())?;
         let seed_comm = self.seed_commitment.as_ref().ok_or(err_uncompleted())?;
@@ -239,9 +240,9 @@ impl Prover {
 
 impl Verifier {
     /// Calculates the dimensions of the vole and pads the circuit. 
-    fn from_circuit(mut circuit: R1CSWithMetadata) -> Self {
+    pub fn from_circuit(mut circuit: R1CSWithMetadata) -> Self {
         let code = RAAACode::rand_default();
-        let pp = circuit.r1cs.calc_padding_needed(NUM_VOLES);
+        let pp = circuit.r1cs.calc_padding_needed(code.k());
         circuit.r1cs.zero_pad(pp.pad_len);
         Verifier { 
             circuit, 
@@ -267,7 +268,7 @@ impl Verifier {
     }
 
     /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
-    fn verify(&self, comm: &ProverCommitment, proof: &Proof) -> Result<PublicOpenings, Error> {
+    pub fn verify(&self, comm: &ProverCommitment, proof: &Proof) -> Result<PublicOpenings, Error> {
         let (delta_choices, vith_delta) = calc_deltas(&comm.seed_comm, &proof.zkp, self.num_voles, &proof.public_openings);
         let mut deltas = Vec::<Fr>::with_capacity(self.num_voles);
         let mut q = Vec::<FrVec>::with_capacity(self.num_voles);
@@ -318,11 +319,30 @@ pub struct PublicOpenings {
 
 #[cfg(test)]
 mod test {
-    use crate::subspacevole::RAAACode;
-
+    use ff::PrimeField;
+    use crate::{subspacevole::RAAACode, zkp, actors::actors::{Prover, Verifier}, Fr, FrVec};
     use super::*;
-    fn prover_verifier_full_integration() {
-        let code = RAAACode::rand_default();
+
+    #[test]
+    fn prover_verifier_full_integration_tiny_circuit() {
+        let mut circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
+        let mut correct_witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
+        let mut prover = Prover::from_witness_and_circuit_unpadded(correct_witness, circuit.clone());
+        let vole_comm = prover.mkvole().unwrap();
+        let proof = prover.prove().unwrap();
+
+
+        let verifier = Verifier::from_circuit(circuit);
+        let result = verifier.verify(&vole_comm, &proof);
+        println!("result: {:?}", result);
         todo!()
+
+    }
+
+    #[test]
+    fn prover_verifier_full_integration_circuit_gt_1024_constraints() {
+        let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
+        todo!()
+
     }
 }

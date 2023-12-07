@@ -31,17 +31,18 @@ pub struct PadParams {
     pub num_padded_wtns_rows: usize
 }
 impl R1CS {
-    //. Given self and number of desired columns i.e. number of small VOLEs, returns the current number of R1CS columns and 
-    pub fn calc_padding_needed(&self, num_voles: usize) -> PadParams {
-        let witness_len = self.a_rows.0.len(); // An arbitrary R1CS row's length
+    //. Given self and number of desired columns i.e. linear code `k`, returns the amount of padding required
+    pub fn calc_padding_needed(&self, k: usize) -> PadParams {
+        let witness_len = self.a_rows.0[0].0.len(); // An arbitrary R1CS row's length
 
         // Pad witness so its length is a product of NUM_VOLES
-        let pad_len = num_voles - (num_voles % witness_len);
+        // note this pads with a whole new row if it is a product. this is neither intential nor important.
+        let pad_len = k - (witness_len % k);
         let padded_len = witness_len + pad_len;
-        
-        let num_padded_wtns_rows = pad_len / num_voles; 
+        debug_assert_eq!(k % padded_len, 0);
 
-        debug_assert_eq!(num_voles % padded_len, 0);
+        let num_padded_wtns_rows = padded_len / k; 
+        
         PadParams {
             orig_wtns_len: witness_len,
             padded_wtns_len: padded_len,
@@ -86,17 +87,17 @@ pub mod quicksilver {
         pub fn from_vith(mut u1_rows: FrMatrix, mut r_rows: FrMatrix, mut witness_rows: FrMatrix, r1cswm: R1CSWithMetadata) -> Prover {
             let r1cs = &r1cswm.r1cs;
             assert!((u1_rows.0.len() == r_rows.0.len()) && (u1_rows.0[0].0.len() == r_rows.0[0].0.len()), "u and v must be same dimension");
-            assert!(witness_rows.0.len() == u1_rows.0.len() - 1, "witness must have one fewer row than u1");
-            assert!(witness_rows.0[0].0.len() == u1_rows.0[0].0.len() - 1, "witness must have same number of columns as u1");
+            assert!(witness_rows.0.len() == u1_rows.0.len() - 1, "witness must have one fewer column than u1");
+            assert!(witness_rows.0[0].0.len() == u1_rows.0[0].0.len(), "witness must same number rows as u1 does");
             assert!((r1cs.a_rows.0.len() == u1_rows.0.len()) && (r1cs.a_rows.0[0].0.len() == u1_rows.0[0].0.len()), "VOLE dimensions must match R1CS dimensions");
 
             let vith_size = u1_rows.0.len() * u1_rows.0[0].0.len();
             let mut u = Vec::with_capacity(vith_size);
             let mut v = Vec::with_capacity(vith_size);
-            witness_rows.0.iter_mut().map(|row| u.append(&mut row.0));
+            witness_rows.0.iter_mut().for_each(|row| u.append(&mut row.0));
+            // Append the final u1_row which wasn't included by iterating through the witness rows:
             u.append(&mut u1_rows.0.last().unwrap().0.clone());
-            r_rows.0.iter_mut().map(|row| v.append(&mut row.0));
-
+            r_rows.0.iter_mut().for_each(|row| v.append(&mut row.0));
             Self { u: FrVec(u), v: FrVec(v), r1cs_with_metadata: r1cswm }
         }
         /// TODO: explore efficiency gains for polynomial Quicksilver rather than gate-by-gate Quicksilver
@@ -201,7 +202,7 @@ pub mod quicksilver {
 }
 
 #[cfg(test)]
-mod test {
+pub mod test {
     use ff::{Field, PrimeField};
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
