@@ -1,4 +1,4 @@
-use crate::{FrMatrix, Fr, FrVec};
+use crate::{FrMatrix, Fr, FrVec, NUM_VOLES};
 
 #[derive(Clone)]
 pub struct R1CS {
@@ -22,10 +22,39 @@ pub struct R1CSWithMetadata {
     pub public_inputs_indices: Vec<usize>,
     pub public_outputs_indices: Vec<usize>
 }
+pub struct PadParams {
+    pub orig_wtns_len: usize,
+    pub padded_wtns_len: usize,
+    /// How long the actual padding is, i.e. `padded_wtns_len` - `orig_wtns_len`
+    pub pad_len: usize,
+    /// When a matrix is formed via chunking the padded witness, this value represents how many rows it has
+    pub num_padded_wtns_rows: usize
+}
+impl R1CS {
+    //. Given self and number of desired columns i.e. number of small VOLEs, returns the current number of R1CS columns and 
+    pub fn calc_padding_needed(&self, num_voles: usize) -> PadParams {
+        let witness_len = self.a_rows.0.len(); // An arbitrary R1CS row's length
 
-impl R1CSWithMetadata {
-    pub fn zero_pad(&mut self, new_len: usize) {
-        todo!()
+        // Pad witness so its length is a product of NUM_VOLES
+        let pad_len = num_voles - (num_voles % witness_len);
+        let padded_len = witness_len + pad_len;
+        
+        let num_padded_wtns_rows = pad_len / num_voles; 
+
+        debug_assert_eq!(num_voles % padded_len, 0);
+        PadParams {
+            orig_wtns_len: witness_len,
+            padded_wtns_len: padded_len,
+            pad_len,
+            num_padded_wtns_rows,
+        }
+    }
+    pub fn zero_pad(&mut self, pad_len: usize) {
+        for i in 0..self.a_rows.0.len() {
+            self.a_rows.0[i].zero_pad(pad_len);
+            self.b_rows.0[i].zero_pad(pad_len);
+            self.c_rows.0[i].zero_pad(pad_len);
+        }
     }
 }
 pub mod quicksilver {

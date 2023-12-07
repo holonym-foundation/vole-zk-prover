@@ -80,20 +80,37 @@ pub struct SubspaceVOLEOpening {
 }
 
 impl Prover {
-    // /// Pads a witness and circuit to dimensions compatible with VitH and the linear code, then creates a prover
-    // /// Witness of length w is padded to length l where l is a multiple of a linear code's input length. creates a VOLE of length 2l+2
-    // fn from_witness_and_circuit_unpadded(witness: Vec<Fr>, circuit: R1CSWithMetadata) {
-    //     let code = RAAACode::rand_default();
-    //     let code.
-    //     Self {
-    //         num_voles: NUM_VOLES,
-    //         code,
-    //         circuit: circuit,
-    //         seed_commitment: None,
-    //         subspace_vole_secrets: None,
-    //         witness_comm: None,
-    //     }
-    // }
+    /// Pads a witness and circuit to dimensions compatible with VitH and the linear code, then creates a prover
+    /// Witness of length w is padded to length l where l is a multiple of a linear code's input length. creates a VOLE of length 2l+2
+    /// Mutates and destroys its inputs by padding them and taking ownership of them
+    fn from_witness_and_circuit_unpadded(mut witness: FrVec, mut circuit: R1CSWithMetadata) -> Self {
+        let code = RAAACode::rand_default();
+        let pp = circuit.r1cs.calc_padding_needed(NUM_VOLES);
+        witness.zero_pad(pp.pad_len);
+        circuit.r1cs.zero_pad(pp.pad_len);
+
+        let mut witness_rows = Vec::with_capacity(pp.num_padded_wtns_rows);
+        let mut start_idx = 0;
+        for _i in 0..pp.num_padded_wtns_rows {
+            witness_rows.push(FrVec(
+                witness.0.get(start_idx .. start_idx + NUM_VOLES).expect("This panic should not be reached").to_vec()
+            ));
+            start_idx += NUM_VOLES;
+        }
+
+        Self {
+            num_voles: code.n(),
+            /// One extra row for the hiding of the linear combination of the relevant values in the consistency check
+            /// 2x extra rows to convert subsapce VOLE into VitH. Overall, we require 2 * `num_padded_witness_rows` + 2 rows
+            vole_length: 2 * (pp.num_padded_wtns_rows + 1),
+            code,
+            circuit,
+            witness: FrMatrix(witness_rows),
+            seed_commitment: None,
+            subspace_vole_secrets: None,
+            witness_comm: None,
+        }
+    }
     /// Called first
     /// Mutates self to contain secret artifacts, returning a commitment
     // THOROUGHLY CHECK AND TEST IT GETS THE DIMENSIONS OF U, V, U1, U2, V1, V2, WITNESS, ETC. CORRECT

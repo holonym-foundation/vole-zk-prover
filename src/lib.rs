@@ -154,6 +154,10 @@ impl PartialEq for FrVec {
 
 
 impl FrVec {
+    /// Appends `len` zeroes
+    pub fn zero_pad(&mut self, len: usize) {
+        self.0.append(&mut vec![Fr::ZERO; len]);
+    }
     pub fn random(len: usize) -> Self {
         let mut r = &mut ThreadRng::default();
         Self(
