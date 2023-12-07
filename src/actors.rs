@@ -286,11 +286,12 @@ impl Verifier {
             q.push(vole_outs.q);
             
         }
+
         if !(*hasher.finalize().as_bytes() == comm.seed_comm) { return Err(anyhow!("Seed commitment is not a commitment to the seeds")) }
         
         // Construct the subspace VOLE
         let deltas = &FrVec(deltas);
-        let new_q = self.code.correct_verifier_qs(&FrMatrix((q)), deltas, &comm.subspace_vole_correction);
+        let new_q = self.code.correct_verifier_qs(&FrMatrix(q).transpose(), deltas, &comm.subspace_vole_correction);
         // Check that its outputs are in the subspace 
         let challenge_hash = &challenge_from_seed(&comm.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
         self.code.verify_consistency_check(challenge_hash, &comm.consistency_check, deltas, &new_q)?;

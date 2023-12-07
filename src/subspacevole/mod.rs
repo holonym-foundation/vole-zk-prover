@@ -49,6 +49,9 @@ pub trait LinearCode {
         // Concatenate zero matrix with C as in the subsapace VOLE protocol:
         let l = old_qs.0[0].0.len();
         let correction_len = correction.0[0].0.len();
+        println!("l {}", l);
+        println!("correction len {}", correction_len);
+
         let zero_len = l - correction_len;
         let zeroes_cons_c = (0..old_qs.0.len()).map(|i|{
             let mut out = Vec::with_capacity(l);
