@@ -6,7 +6,7 @@ pub mod challenges;
 pub mod smallvole;
 pub mod vecccom;
 pub mod actors;
-use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::Output};
+use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::Output, fmt::Display};
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
@@ -19,7 +19,7 @@ extern crate ff;
 use crate::ff::PrimeField;
 
 /// Important that it is the block size of the linear code
-const NUM_VOLES: usize = 1024; //should be 1024
+const NUM_VOLES: usize = 8; //should be 1024
 
 #[derive(PrimeField)]
 #[PrimeFieldModulus = "21888242871839275222246405745257275088548364400416034343698204186575808495617"]
@@ -31,6 +31,23 @@ pub struct Fr([u64; 4]);
 #[derive(Debug, Clone)]
 pub struct FrVec(pub Vec<Fr>);
 
+/// Pretty display
+impl Display for FrVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[ {} ]", self.0.iter().map(|fr|{
+                let repr = fr.to_repr().0;
+                format!("0x{:02x}..{:02x}", repr[0], repr[1])
+            }).collect::<Vec<String>>().join(", ")
+        )
+    }
+}
+/// Pretty display
+impl Display for FrMatrix {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = self.0.iter().map(|fv|fv.to_string()).collect::<Vec<String>>();
+        write!(f, "Matrix in row major order:\n[\n\t{}\n]", s.join("\n\t"))
+    }
+}
 impl Mul for FrVec {
     type Output = Self;
     fn mul(self, rhs: Self) -> Self {
