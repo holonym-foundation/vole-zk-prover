@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0.75"
 blake3 = "1.5.0"
 ff = { version = "0.13", features = ["derive"] }
+hex = "0.4.3"
 itertools = "0.11.0"
 lazy_static = "1.4.0"
 nalgebra = "0.32.3"

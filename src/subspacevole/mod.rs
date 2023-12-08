@@ -24,7 +24,10 @@ pub trait LinearCode {
     }
 
     fn mul_vec_by_extended_inverse(&self, u: &FrVec) -> FrVec;
-        fn batch_encode_extended(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
+    fn batch_encode(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
+        matrix.iter().map(|x|self.encode(x)).collect()
+    }
+    fn batch_encode_extended(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
         matrix.iter().map(|x|self.encode_extended(x)).collect()
     }
     /// Calculates the prover's correction value for the whole U matrix
@@ -73,8 +76,9 @@ pub trait LinearCode {
     /// `consistency_check` is the value returned frmo `calc_consistency_check`
     /// `deltas` and `q` are the verifier's deltas and q
     /// encoder
-    /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
     /// TODO: generics instead of RAAACode. And ofc generics for field
+    /// AUDIT this consistency check -- in the original paper the challenge hash is a matrix. For large fields it seems a 1xn matrix, 
+    /// i.e. a vector, is sufficient. However, this should be double-checked :)
     fn verify_consistency_check(&self, challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix) -> Result<(), Error> {
         let u_hash = &consistency_check.0;
         let v_hash = &consistency_check.1;
