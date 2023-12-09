@@ -4,7 +4,7 @@ pub mod actors {
     use ff::{PrimeField, Field};
     use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
 
-    use crate::{subspacevole::{RAAACode, calc_consistency_check, LinearCode}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_deltas, calc_quicksilver_challenge}, NUM_VOLES};
+    use crate::{subspacevole::{RAAACode, calc_consistency_check, LinearCode}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_quicksilver_challenge, calc_other_challenges}, NUM_VOLES};
 
 
 
@@ -70,6 +70,8 @@ pub struct Proof {
     pub public_openings: PublicOpenings,
     /// The VitH S matrix 
     pub s_matrix: FrMatrix,
+    /// Proof S was constructed correctly
+    pub s_consistency_check: FrVec 
 }
 
 pub struct SubspaceVOLEOpening {
@@ -201,11 +203,13 @@ impl Prover {
     // }
 
     /// Called as part of proof()
-    /// Calculates the S matrix to reveal to the verifier once it learns ∆'
-    /// Returns none if it lacks 
-    fn s_matrix(&self, vith_delta: &Fr) -> Result<FrMatrix, Error> {
+    /// Calculates the S matrix to reveal to the verifier once it learns ∆' and challenge
+    /// Returns (S, constency check value)
+    fn s_matrix_with_consistency_proof(&self, vith_delta: &Fr, challenge: &FrVec) -> Result<(FrMatrix, FrVec), Error> {
         let svs = self.subspace_vole_secrets.as_ref().ok_or(anyhow!("VOLE must be completed before this step"))?;
-        Ok(&svs.u1.scalar_mul(vith_delta) + &svs.u2)
+        let s = &svs.u1.scalar_mul(vith_delta) + &svs.u2;
+        let proof = challenge * &(&svs.v1.scalar_mul(vith_delta) + &svs.v2).transpose();
+        Ok((s, proof))
     }
 
     /// Wrapper for all other prover functions
@@ -224,15 +228,15 @@ impl Prover {
             public_outputs: prover.open_public(&self.circuit.public_outputs_indices)
         };
         
-        let (subspace_deltas, vith_delta) = calc_deltas(seed_comm, &zkp, self.num_voles, &public_openings);
-        let s_matrix = self.s_matrix(&vith_delta)?;
+        let challenges = calc_other_challenges(seed_comm, witness_comm, &zkp, self.vole_length, self.num_voles, &public_openings);
+        let (s_matrix, s_consistency_check) = self.s_matrix_with_consistency_proof(&challenges.vith_delta, &challenges.s_challenge)?;
 
         let mut openings = Vec::with_capacity(self.num_voles);
         let mut opening_proofs = Vec::with_capacity(self.num_voles);
         for i in 0..svs.seeds.len() {
-            openings.push(svs.seeds[i][subspace_deltas[i]]);
+            openings.push(svs.seeds[i][challenges.delta_choices[i]]);
             opening_proofs.push(
-                proof_for_revealed_seed(&svs.seeds[i][1 - subspace_deltas[i]])
+                proof_for_revealed_seed(&svs.seeds[i][1 - challenges.delta_choices[i]])
             );
         };
 
@@ -240,6 +244,7 @@ impl Prover {
             Proof { 
                 zkp, 
                 s_matrix,
+                s_consistency_check,
                 public_openings,
                 seed_openings : SubspaceVOLEOpening { seed_opens: openings, seed_proofs: opening_proofs },
             }
@@ -279,7 +284,7 @@ impl Verifier {
 
     /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
     pub fn verify(&self, comm: &ProverCommitment, proof: &Proof, test_prover_deleteme: &Prover) -> Result<PublicOpenings, Error> {
-        let (delta_choices, vith_delta) = calc_deltas(&comm.seed_comm, &proof.zkp, self.num_voles, &proof.public_openings);
+        let challenges = calc_other_challenges(&comm.seed_comm, &comm.witness_comm, &proof.zkp, self.vole_length, self.num_voles, &proof.public_openings);
         let mut deltas = Vec::<Fr>::with_capacity(self.num_voles);
         let mut q_cols = Vec::<FrVec>::with_capacity(self.num_voles);
         // Calculate small VOLE outputs then check they were all commited to in comm.seed_comm 
@@ -287,11 +292,11 @@ impl Verifier {
         for i in 0..self.num_voles {
             let rec = reconstruct_commitment(
                 &proof.seed_openings.seed_opens[i], 
-                delta_choices[i] != 0, // Convert usize that should be 0 or 1 to bool
+                challenges.delta_choices[i] != 0, // Convert usize that should be 0 or 1 to bool
                 &proof.seed_openings.seed_proofs[i]
             );
             hasher.update(&rec);
-            let vole_outs = VOLE::verifier_outputs(&proof.seed_openings.seed_opens[i], delta_choices[i] == 0, self.vole_length);
+            let vole_outs = VOLE::verifier_outputs(&proof.seed_openings.seed_opens[i], challenges.delta_choices[i] == 0, self.vole_length);
             deltas.push(vole_outs.delta);
             q_cols.push(vole_outs.q);
             
@@ -307,24 +312,23 @@ impl Verifier {
         let challenge_hash = &challenge_from_seed(&comm.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
 
 
-        #[cfg(not(test))]
         self.code.verify_consistency_check(challenge_hash, &comm.consistency_check, &deltas, &new_q_rows.transpose())?;
-        #[cfg(test)]
-        println!("consistency check result {:?}", self.code.verify_consistency_check(challenge_hash, &comm.consistency_check, &deltas, &new_q_rows.transpose()));
-        // Check that consistency should check to see whether the problem is in consistency check or its inputs
-        #[cfg(test)]
-        {
-            let secrets = test_prover_deleteme.subspace_vole_secrets.as_ref().unwrap();
-            let u_gc = FrMatrix(self.code.batch_encode(&secrets.u.0));
-            let u_gc_delta = FrMatrix(u_gc.0.iter().map(|u_gc_row|u_gc_row * &deltas).collect());
-            println!("consistency should check: {}", &u_gc_delta + &secrets.v == new_q_rows);
-        }
 
-        // Check S matrix is in the subspace as well 
-        // IF TESTS FAIL CHECK THESE ARE ROWS VS. COLUMNS
-        self.code.check_parity_batch(&proof.s_matrix.0)?;
+        // Perhaps this is better in a separate function since this is long but it is different to uncouple all the components of verification
+        // Doing the mutability like the prover may help split large functions
+        // Check S matrix is constructed properly
+        debug_assert!((new_q_rows.0.len() == self.vole_length) && (self.vole_length % 2 == 0), "Q must be vole_length and even");
+        let half_len = self.vole_length / 2;
+        let q1 = FrMatrix(new_q_rows.0[0..half_len].to_vec());
+        let q2 = FrMatrix(new_q_rows.0[half_len..self.vole_length].to_vec());
+        let sgc_diag_delta = self.code.batch_encode(&proof.s_matrix.0).iter().map( |row| row * &deltas ).collect::<Vec<FrVec>>();
+        let lhs = &challenges.s_challenge * &(&q1.scalar_mul(&challenges.vith_delta) + &q2).transpose();
+        let rhs = &proof.s_consistency_check + &(&challenges.s_challenge * &FrMatrix(sgc_diag_delta).transpose());
+        if lhs != rhs { return Err(anyhow!("failed to verify S matrix"))}
+
+
         // Verify the ZKP
-        let zk_verifier = quicksilver::Verifier::from_vith(new_q_rows.transpose(), vith_delta.clone(), self.circuit.clone());
+        let zk_verifier = quicksilver::Verifier::from_vith(new_q_rows.transpose(), challenges.vith_delta.clone(), self.circuit.clone());
         let quicksilver_challenge = calc_quicksilver_challenge(&comm.seed_comm, &comm.witness_comm);
         zk_verifier.verify(&quicksilver_challenge, &proof.zkp)?;
         zk_verifier.verify_public(&proof.public_openings)?;
