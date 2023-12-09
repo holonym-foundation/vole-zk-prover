@@ -44,11 +44,7 @@ pub struct SubspaceVOLESecrets {
     /// First half of v1_s rows
     v1: FrMatrix,
     /// Second half of v1_s rows
-    v2: FrMatrix,
-    #[cfg(test)]
-    u: FrMatrix,
-    #[cfg(test)]
-    v: FrMatrix,
+    v2: FrMatrix
 }
 pub struct ProverCommitment {
     /// Hash of every pair of seed's respective hashes for the seeds used to create the VOLEs. We are just using two seeds per VOLE!
@@ -71,7 +67,9 @@ pub struct Proof {
     /// The VitH S matrix 
     pub s_matrix: FrMatrix,
     /// Proof S was constructed correctly
-    pub s_consistency_check: FrVec 
+    pub s_consistency_check: FrVec,
+    #[cfg(test)]
+    prover: quicksilver::Prover
 }
 
 pub struct SubspaceVOLEOpening {
@@ -182,11 +180,6 @@ impl Prover {
             u2,
             v1,
             v2,
-            #[cfg(test)]
-            u: new_u_rows,
-            #[cfg(test)]
-            v: v_rows
-
         });
         Ok(ProverCommitment { 
             seed_comm, 
@@ -247,6 +240,8 @@ impl Prover {
                 s_consistency_check,
                 public_openings,
                 seed_openings : SubspaceVOLEOpening { seed_opens: openings, seed_proofs: opening_proofs },
+                #[cfg(test)]
+                prover
             }
         )
     }
@@ -315,7 +310,7 @@ impl Verifier {
         self.code.verify_consistency_check(challenge_hash, &comm.consistency_check, &deltas, &new_q_rows.transpose())?;
 
         // Perhaps this is better in a separate function since this is long but it is different to uncouple all the components of verification
-        // Doing the mutability like the prover may help split large functions
+        // Doing the mutability like the prover may help split large functions:
         // Check S matrix is constructed properly
         debug_assert!((new_q_rows.0.len() == self.vole_length) && (self.vole_length % 2 == 0), "Q must be vole_length and even");
         let half_len = self.vole_length / 2;
@@ -326,9 +321,16 @@ impl Verifier {
         let rhs = &proof.s_consistency_check + &(&challenges.s_challenge * &FrMatrix(sgc_diag_delta).transpose());
         if lhs != rhs { return Err(anyhow!("failed to verify S matrix"))}
 
-
         // Verify the ZKP
-        let zk_verifier = quicksilver::Verifier::from_vith(new_q_rows.transpose(), challenges.vith_delta.clone(), self.circuit.clone());
+        let zk_verifier = quicksilver::Verifier::from_vith(&proof.s_matrix, challenges.vith_delta.clone(), &comm.witness_comm, self.circuit.clone());
+        #[cfg(test)]
+        {
+            let rhs = &proof.prover.u.scalar_mul(&challenges.vith_delta) + &proof.prover.v;
+            println!("Q = ∆U + V: {}", zk_verifier.q == rhs);
+        }
+       
+        
+        
         let quicksilver_challenge = calc_quicksilver_challenge(&comm.seed_comm, &comm.witness_comm);
         zk_verifier.verify(&quicksilver_challenge, &proof.zkp)?;
         zk_verifier.verify_public(&proof.public_openings)?;

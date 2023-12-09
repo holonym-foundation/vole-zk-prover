@@ -60,6 +60,7 @@ impl R1CS {
 }
 pub mod quicksilver {
     use anyhow::{Error, anyhow};
+    use ff::Field;
 
     use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul, actors::actors::PublicOpenings};
 
@@ -167,14 +168,23 @@ pub mod quicksilver {
         pub r1cs_with_metadata: R1CSWithMetadata
     }
     impl Verifier {
-        /// Creates a prover from VitH U1 and R matrices of equal dimension with 2l+2 rows where the witness is split into l chunks of length vole_length
+        /// Creates a verifier from VitH S and D matrices where D is the prover's commitment to the witness
         /// Takes ownership and mutates most of its inputs to something useless
-        pub fn from_vith(mut q_rows: FrMatrix, delta: Fr, r1cswm: R1CSWithMetadata) -> Verifier {
+        pub fn from_vith(mut s_rows: &FrMatrix, delta: Fr, witness_comm: &FrMatrix, r1cswm: R1CSWithMetadata) -> Verifier {
             let r1cs = &r1cswm.r1cs;
-            assert!((r1cs.a_rows.0.len() == q_rows.0.len()) && (r1cs.a_rows.0[0].0.len() == q_rows.0[0].0.len()), "VOLE dimensions must match R1CS dimensions");
-            let vith_size = q_rows.0.len() * q_rows.0[0].0.len();
+            // Adjust S by adding the witness to its first part
+            let mut s_adjustment = witness_comm.scalar_mul(&delta);
+            let row_len = s_adjustment.0[0].0.len();
+            let num_zero_rows = s_rows.0.len() - s_adjustment.0.len();
+            let mut zero_rows = Vec::with_capacity(num_zero_rows);
+            for i in 0..num_zero_rows { zero_rows.push(FrVec(vec![Fr::ZERO; row_len])) }
+            let mut s_adjusted = s_rows + &s_adjustment;
+            println!("lengths {}, {}", r1cs.a_rows.0.len(), s_adjusted.0.len());
+            
+            assert!((r1cs.a_rows.0.len() == s_adjusted.0.len()) /* && (r1cs.a_rows.0[0].0.len() == q_rows.0[0].0.len()) */, "VOLE dimensions must correspond R1CS");
+            let vith_size = s_adjusted.0.len() * s_adjusted.0[0].0.len();
             let mut q = Vec::with_capacity(vith_size);
-            q_rows.0.iter_mut().for_each(|row| q.append(&mut row.0));
+            s_adjusted.0.iter_mut().for_each(|row| q.append(&mut row.0));
             let q = FrVec(q);
             Self { delta, q, r1cs_with_metadata: r1cswm }
         }
