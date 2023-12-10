@@ -1,3 +1,4 @@
+pub mod circom;
 pub mod zkp;
 pub mod utils;
 pub mod vith;
@@ -36,7 +37,7 @@ impl Display for FrVec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[ {} ]", self.0.iter().map(|fr|{
                 let repr = fr.to_repr().0;
-                format!("0x{:02x}..{:02x}", repr[0], repr[1])
+                format!("0x{:02x}..{:02x}", repr[0], repr[31])
             }).collect::<Vec<String>>().join(", ")
         )
     }

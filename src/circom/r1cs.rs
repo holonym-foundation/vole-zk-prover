@@ -77,7 +77,7 @@ fn r1cs_from_reader<R: Read + Seek>(mut reader: R) -> Result<R1CSFile, Error> {
     reader.seek(SeekFrom::Start(*section_offsets.get(&header_type).unwrap()))?;
     let header = read_header(&mut reader, *section_sizes.get(&header_type).unwrap())?;
     if header.field_size != 32 {
-        bail!("This parser only supports 32-byet fields");
+        bail!("This parser only supports 32-byte fields");
     }
 
     if header.prime_size != hex::decode("010000f093f5e1439170b97948e833285d588181b64550b829a031e1724e6430").unwrap() {
@@ -178,4 +178,18 @@ fn read_map<R: Read>(mut reader: R, size: u64, header: &Header) -> Result<Vec<u6
         bail!("Wire 0 should always be mapped to 0");
     }
     Ok(vec)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{fs::{self, File}, io::BufReader};
+
+    use super::*;
+    #[test]
+    fn read_r1cs_file() {
+        let file = File::open("src/circom/examples/test.r1cs").unwrap();
+        let mut buf_reader = BufReader::new(file);
+        let r1cs = r1cs_from_reader(buf_reader).unwrap();
+        println!("R1CS\n{:?}", r1cs);
+    }
 }

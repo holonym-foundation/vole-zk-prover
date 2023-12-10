@@ -147,6 +147,11 @@ impl Prover {
                     - 
                     &self.witness;
 
+        debug_assert!({
+            let zeroes = FrMatrix(vec![FrVec(vec![Fr::ZERO; self.witness.0[0].0.len()]); self.witness.0.len()]);
+            &(&witness_comm + &self.witness) - &FrMatrix(new_u_rows.0[0..self.witness.0.len()].to_vec()) == zeroes
+        }, "Commitment failed");
+
         self.witness_comm = Some(witness_comm.clone());
         if self.num_voles % self.code.q != 0 { return Err(anyhow!("invalid num_voles param")) };
         let challenge_hash = challenge_from_seed(&seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
@@ -326,6 +331,9 @@ impl Verifier {
         #[cfg(test)]
         {
             let rhs = &proof.prover.u.scalar_mul(&challenges.vith_delta) + &proof.prover.v;
+            println!("Q: {}", &zk_verifier.q);
+            println!("U: {}", &proof.prover.u);
+            println!("V: {}", &proof.prover.v);
             println!("Q = ∆U + V: {}", zk_verifier.q == rhs);
         }
        

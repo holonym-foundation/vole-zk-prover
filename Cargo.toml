@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 blake3 = "1.5.0"
+byteorder = "1.5.0"
 ff = { version = "0.13", features = ["derive"] }
 hex = "0.4.3"
 itertools = "0.11.0"
