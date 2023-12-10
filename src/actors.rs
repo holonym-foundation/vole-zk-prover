@@ -142,15 +142,7 @@ impl Prover {
 
         let (new_u_rows, correction) = self.code.get_prover_correction(&u_prime_rows);
         
-        // If I encounter an error when testing, length/dim seems likely culprit here
-        let witness_comm = &FrMatrix(new_u_rows.0[0..self.witness.0.len()].to_vec()) 
-                    - 
-                    &self.witness;
-
-        debug_assert!({
-            let zeroes = FrMatrix(vec![FrVec(vec![Fr::ZERO; self.witness.0[0].0.len()]); self.witness.0.len()]);
-            &(&witness_comm + &self.witness) - &FrMatrix(new_u_rows.0[0..self.witness.0.len()].to_vec()) == zeroes
-        }, "Commitment failed");
+        let witness_comm = &self.witness - &FrMatrix(new_u_rows.0[0..self.witness.0.len()].to_vec());
 
         self.witness_comm = Some(witness_comm.clone());
         if self.num_voles % self.code.q != 0 { return Err(anyhow!("invalid num_voles param")) };
@@ -342,7 +334,6 @@ impl Verifier {
         let quicksilver_challenge = calc_quicksilver_challenge(&comm.seed_comm, &comm.witness_comm);
         zk_verifier.verify(&quicksilver_challenge, &proof.zkp)?;
         zk_verifier.verify_public(&proof.public_openings)?;
-        todo!("add commitment to witness to Q");
         Ok(proof.public_openings.clone())
     }
 

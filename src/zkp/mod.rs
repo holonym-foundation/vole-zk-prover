@@ -210,9 +210,11 @@ pub mod quicksilver {
                 false => Err(anyhow!("Proof was not verified with success"))
             }
         }
-        /// Verifies the non-ZK proof of opening for the witness' public values. Can this even be done by the verifier without referencing the underlying subspace VOLE?
+        /// Assuming the VOLE was constructed properly, this verifies the opening of witness VOLE correlations
         pub fn verify_public(&self, pos: &PublicOpenings) -> Result<(), Error> {
-            todo!("Can this even be done by the verifier without referencing the underlying subspace VOLE?")
+            let mut indices = self.r1cs_with_metadata.public_inputs_indices.clone();
+            indices.extend(&self.r1cs_with_metadata.public_outputs_indices);
+            for i in self.r1cs_with_metadata.public_inputs_indices
         }
     } 
 }
