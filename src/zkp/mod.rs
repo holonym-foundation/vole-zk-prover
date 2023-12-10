@@ -59,7 +59,7 @@ impl R1CS {
     }
 }
 pub mod quicksilver {
-    use anyhow::{Error, anyhow};
+    use anyhow::{Error, anyhow, bail, Ok};
     use ff::Field;
 
     use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul, actors::actors::PublicOpenings};
@@ -212,9 +212,21 @@ pub mod quicksilver {
         }
         /// Assuming the VOLE was constructed properly, this verifies the opening of witness VOLE correlations
         pub fn verify_public(&self, pos: &PublicOpenings) -> Result<(), Error> {
+            if (!pos.public_inputs.len() == self.r1cs_with_metadata.public_inputs_indices.len()) && ((!pos.public_inputs.len() == self.r1cs_with_metadata.public_inputs_indices.len())) {
+                bail!("Public values have the wrong input or output length(s)")
+            }
+
             let mut indices = self.r1cs_with_metadata.public_inputs_indices.clone();
+            let mut public = pos.public_inputs.clone();
+
             indices.extend(&self.r1cs_with_metadata.public_outputs_indices);
-            for i in self.r1cs_with_metadata.public_inputs_indices
+            public.extend(&pos.public_outputs);
+
+            for (i, (u, v)) in indices.iter().zip(public.iter()) {
+                // TODO: consider giving index of which input was invalid.  This could impact performance slightly as it would not be static but dynamic
+                if !(*u * &self.delta + v == self.q.0[*i]) { bail!("Invaliding opening of a public input") }
+            }
+            Ok(())
         }
     } 
 }

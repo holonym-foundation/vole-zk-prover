@@ -366,15 +366,16 @@ mod test {
 
         let verifier = Verifier::from_circuit(circuit);
         let result = verifier.verify(&vole_comm, &proof, &prover);
-        println!("result: {:?}", result);
-        todo!()
-
+        assert!(result.is_ok());
     }
 
     #[test]
     fn prover_verifier_full_integration_circuit_gt_1024_constraints() {
         let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
         todo!()
-
+    }
+    #[test]
+    fn public_values() {
+        todo!("test invalid public inputs fail")
     }
 }
