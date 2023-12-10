@@ -2,15 +2,17 @@
 
 use anyhow::{bail, Error};
 use ff::PrimeField;
-use std::{io::{Read, SeekFrom}, collections::HashMap};
+use std::{io::{Read, Seek, SeekFrom}, collections::HashMap};
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{Fr, FrVec, FrRepr};
+use crate::{Fr, FrVec, FrMatrix};
+
+use super::read_constraint_vec;
 
 type Witness = Vec<Fr>;
 
 // R1CSFile's header
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Header {
     pub field_size: u32,
     pub prime_size: Vec<u8>,
@@ -21,8 +23,26 @@ pub struct Header {
     pub n_labels: u64,
     pub n_constraints: u32,
 }
+
+#[derive(Debug)]
+pub struct Constraints {
+    a_rows: FrMatrix,
+    b_rows: FrMatrix,
+    c_rows: FrMatrix,
+    a_wires: Vec<Vec<usize>>,
+    b_wires: Vec<Vec<usize>>,
+    c_wires: Vec<Vec<usize>>
+}
+
+#[derive(Debug)]
+pub struct R1CSFile {
+    pub version: u32,
+    pub header: Header,
+    pub constraints: Constraints,
+    pub wire_mapping: Vec<u64>,
+}
 /// Parses bytes in a circom .r1cs binary format
-fn r1cs_from_reader<R: Read + Seek>(mut reader: R) -> Result<FrVec, Error> {
+fn r1cs_from_reader<R: Read + Seek>(mut reader: R) -> Result<R1CSFile, Error> {
     let mut magic = [0u8; 4];
     reader.read_exact(&mut magic)?;
     if magic != "r1cs".as_bytes() {
@@ -67,11 +87,12 @@ fn r1cs_from_reader<R: Read + Seek>(mut reader: R) -> Result<FrVec, Error> {
     reader.seek(SeekFrom::Start(
         *section_offsets.get(&constraint_type).unwrap(),
     ))?;
-    let constraints = read_constraints::<&mut R>(
+
+    let constraints = read_constraints(
         &mut reader,
         *section_sizes.get(&constraint_type).unwrap(),
         &header,
-    )?;
+    );
 
     reader.seek(SeekFrom::Start(
         *section_offsets.get(&wire2label_type).unwrap(),
@@ -108,4 +129,53 @@ fn read_header<R: Read>(mut reader: R, size: u64) -> Result<Header, Error> {
         n_labels: reader.read_u64::<LittleEndian>()?,
         n_constraints: reader.read_u32::<LittleEndian>()?,
     })
+}
+
+fn read_constraints<R: Read>(
+    mut reader: R,
+    size: u64,
+    header: &Header,
+) -> Constraints {
+    
+    let mut a_rows = Vec::with_capacity(header.n_constraints as usize);
+    let mut b_rows = Vec::with_capacity(header.n_constraints as usize);
+    let mut c_rows = Vec::with_capacity(header.n_constraints as usize);
+
+    let mut a_wires = Vec::with_capacity(header.n_constraints as usize);
+    let mut b_wires = Vec::with_capacity(header.n_constraints as usize);
+    let mut c_wires = Vec::with_capacity(header.n_constraints as usize);
+
+
+    for _ in 0..header.n_constraints {
+        let n_vec = reader.read_u32::<LittleEndian>().unwrap() as usize;
+        let (a_wires_, a_row_) = read_constraint_vec(&mut reader, n_vec);
+        let (b_wires_, b_row_) = read_constraint_vec(&mut reader, n_vec);
+        let (c_wires_, c_row_) = read_constraint_vec(&mut reader, n_vec);
+        a_rows.push(FrVec(a_row_));
+        b_rows.push(FrVec(b_row_));
+        c_rows.push(FrVec(c_row_));
+
+        a_wires.push(a_wires_);
+        b_wires.push(b_wires_);
+        c_wires.push(c_wires_);
+    }
+    let a_rows = FrMatrix(a_rows);
+    let b_rows = FrMatrix(b_rows);
+    let c_rows = FrMatrix(c_rows);
+
+    Constraints { a_rows, b_rows, c_rows, a_wires, b_wires, c_wires }
+}
+
+fn read_map<R: Read>(mut reader: R, size: u64, header: &Header) -> Result<Vec<u64>, Error> {
+    if size != header.n_wires as u64 * 8 {
+        bail!("Invalid map section size");
+    }
+    let mut vec = Vec::with_capacity(header.n_wires as usize);
+    for _ in 0..header.n_wires {
+        vec.push(reader.read_u64::<LittleEndian>()?);
+    }
+    if vec[0] != 0 {
+        bail!("Wire 0 should always be mapped to 0");
+    }
+    Ok(vec)
 }

@@ -5,6 +5,8 @@ use byteorder::{LittleEndian, ReadBytesExt};
 
 use crate::{Fr, FrVec, FrRepr};
 
+use super::{read_fr, read_fr_vec};
+
 type Witness = Vec<Fr>;
 
 /// Parses bytes in a circom .wtns binary format
@@ -52,15 +54,9 @@ fn wnts_from_reader<R: Read>(mut reader: R) -> Result<FrVec, Error> {
     if sec_size != (witness_len * field_size) as u64 {
         bail!("invalid witness section size {}", sec_size);
     }
-    let mut result = Vec::with_capacity(witness_len as usize);
-    for _ in 0..witness_len {
-        let mut buf = [0u8; 32];
-        reader.read_exact(&mut buf).unwrap();
-        buf.reverse(); // Convert endianness to big
-        result.push(Fr::from_repr(FrRepr(buf)).unwrap()); 
-    }
+
     Ok(
-        FrVec(result)
+        FrVec(read_fr_vec(reader, witness_len as usize))
     )
 }
 
