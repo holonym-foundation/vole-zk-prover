@@ -350,7 +350,6 @@ mod test {
             incorrect_witness.0[i] += Fr::ONE;
             assert!(e2e_test(incorrect_witness, circuit.clone()).is_err());
         }
-
     }
 
     #[test]
