@@ -2,7 +2,7 @@
 pub mod actors {
     use anyhow::{Error, anyhow, Ok};
     use ff::{PrimeField, Field};
-    use rand::{SeedableRng, rngs::{StdRng, ThreadRng}, RngCore};
+    use rand::{rngs::ThreadRng, RngCore};
 
     use crate::{subspacevole::{RAAACode, calc_consistency_check, LinearCode}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_quicksilver_challenge, calc_other_challenges}, NUM_VOLES};
 
@@ -116,6 +116,7 @@ impl Prover {
             witness_comm: None,
         }
     }
+
     /// Called first
     /// Mutates self to contain secret artifacts, returning a commitment
     // THOROUGHLY CHECK AND TEST IT GETS THE DIMENSIONS OF U, V, U1, U2, V1, V2, WITNESS, ETC. CORRECT
@@ -185,12 +186,6 @@ impl Prover {
             subspace_vole_correction: correction
         })
     }
-    // /// Called as part of proof()
-    // /// Creates a ZKP that its multiplications are all correct
-    // // /// Also calculates and stores vith_delta when done
-    // fn zkp(&self) -> ZKP {
-    //     todo!()
-    // }
 
     /// Called as part of proof()
     /// Calculates the S matrix to reveal to the verifier once it learns ∆' and challenge
@@ -261,21 +256,10 @@ impl Verifier {
             subspace_vole_deltas: None, 
             vith_delta: None 
         }
-        
-
-        
-    //     pub circuit: R1CSWithMetadata,
-    // pub code: RAAACode, 
-    // pub num_voles: usize,
-    // pub vole_length: usize,
-    // /// Starts as None, set during Fiat Shamir
-    // pub subspace_vole_deltas: Option<FrVec>,
-    // /// Starts as None, set during Fiat Shamir
-    // pub vith_delta: Option<Fr>
     }
 
     /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
-    pub fn verify(&self, comm: &ProverCommitment, proof: &Proof, test_prover_deleteme: &Prover) -> Result<PublicOpenings, Error> {
+    pub fn verify(&self, comm: &ProverCommitment, proof: &Proof) -> Result<PublicOpenings, Error> {
         let challenges = calc_other_challenges(&comm.seed_comm, &comm.witness_comm, &proof.zkp, self.vole_length, self.num_voles, &proof.public_openings);
         let mut deltas = Vec::<Fr>::with_capacity(self.num_voles);
         let mut q_cols = Vec::<FrVec>::with_capacity(self.num_voles);
@@ -320,17 +304,6 @@ impl Verifier {
 
         // Verify the ZKP
         let zk_verifier = quicksilver::Verifier::from_vith(&proof.s_matrix, challenges.vith_delta.clone(), &comm.witness_comm, self.circuit.clone());
-        #[cfg(test)]
-        {
-            let rhs = &proof.prover.u.scalar_mul(&challenges.vith_delta) + &proof.prover.v;
-            println!("Q: {}", &zk_verifier.q);
-            println!("U: {}", &proof.prover.u);
-            println!("V: {}", &proof.prover.v);
-            println!("Q = ∆U + V: {}", zk_verifier.q == rhs);
-        }
-       
-        
-        
         let quicksilver_challenge = calc_quicksilver_challenge(&comm.seed_comm, &comm.witness_comm);
         zk_verifier.verify(&quicksilver_challenge, &proof.zkp)?;
         zk_verifier.verify_public(&proof.public_openings)?;
@@ -351,22 +324,33 @@ pub struct PublicOpenings {
 
 #[cfg(test)]
 mod test {
-    use ff::PrimeField;
-    use crate::{subspacevole::RAAACode, zkp, actors::actors::{Prover, Verifier}, Fr, FrVec};
+    use ff::{PrimeField, Field};
+    use crate::{subspacevole::RAAACode, zkp::{self, R1CSWithMetadata}, actors::actors::{Prover, Verifier}, Fr, FrVec, circom::witness};
     use super::*;
 
-    #[test]
-    fn prover_verifier_full_integration_tiny_circuit() {
-        let mut circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
-        let mut correct_witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
-        let mut prover = Prover::from_witness_and_circuit_unpadded(correct_witness, circuit.clone());
+    fn e2e_test(witness: FrVec, circuit: R1CSWithMetadata) -> Result<actors::PublicOpenings, anyhow::Error>{
+        let mut prover = Prover::from_witness_and_circuit_unpadded(witness.clone(), circuit.clone());
         let vole_comm = prover.mkvole().unwrap();
         let proof = prover.prove().unwrap();
 
-
         let verifier = Verifier::from_circuit(circuit);
-        let result = verifier.verify(&vole_comm, &proof, &prover);
-        assert!(result.is_ok());
+        verifier.verify(&vole_comm, &proof)
+    }
+    #[test]
+    fn prover_verifier_full_integration_tiny_circuit() {
+        let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
+        let correct_witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
+        let len = correct_witness.0.len();
+
+        assert!(e2e_test(correct_witness.clone(), circuit.clone()).is_ok());
+
+        // Test every value in this small witness is accounted for (assuming it is constrained)
+        for i in 0..len {
+            let mut incorrect_witness = correct_witness.clone();
+            incorrect_witness.0[i] += Fr::ONE;
+            assert!(e2e_test(incorrect_witness, circuit.clone()).is_err());
+        }
+
     }
 
     #[test]
