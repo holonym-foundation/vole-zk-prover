@@ -6,7 +6,7 @@ use itertools::Itertools;
 use std::{io::{Read, Seek, SeekFrom}, collections::HashMap};
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{Fr, FrVec, FrMatrix, zkp::{R1CS, R1CSWithMetadata}};
+use crate::{Fr, FrVec, FrMatrix, zkp::{R1CS, R1CSWithMetadata, FullR1CS}};
 
 use super::read_constraint_vec;
 
@@ -48,15 +48,16 @@ impl R1CSFile {
     pub fn to_crate_format(self) -> R1CSWithMetadata {
         println!("WIRE MAP IS {:?}", self.wire_mapping);
         // TODO: wire map
-        let r1cs = R1CS {
+        let r1cs = R1CS::Full(FullR1CS {
             a_rows: self.constraints.a_rows,
             b_rows: self.constraints.b_rows,
             c_rows: self.constraints.c_rows
-        };
+        });
         let pub_in_start = 1 + self.header.n_pub_out as usize;
         let public_outputs_indices = (1 .. pub_in_start).collect_vec();
         let public_inputs_indices = (pub_in_start .. pub_in_start + self.header.n_pub_in as usize).collect_vec();
-        R1CSWithMetadata { r1cs, public_inputs_indices, public_outputs_indices }
+
+        R1CSWithMetadata { r1cs, public_inputs_indices, public_outputs_indices, unpadded_wtns_len : self.header.n_labels as usize }
     }
     /// Parses bytes in a circom .r1cs binary format
     pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<Self, Error> {

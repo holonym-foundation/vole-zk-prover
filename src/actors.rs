@@ -90,7 +90,7 @@ impl Prover {
     pub fn from_witness_and_circuit_unpadded(mut witness: FrVec, mut circuit: R1CSWithMetadata) -> Self {
         let code = RAAACode::rand_default();
         let k = code.k();
-        let pp = circuit.r1cs.calc_padding_needed(k);
+        let pp = circuit.calc_padding_needed(k);
         witness.zero_pad(pp.pad_len);
         circuit.r1cs.zero_pad(pp.pad_len);
 
@@ -242,7 +242,7 @@ impl Verifier {
     /// Calculates the dimensions of the vole and pads the circuit. 
     pub fn from_circuit(mut circuit: R1CSWithMetadata) -> Self {
         let code = RAAACode::rand_default();
-        let pp = circuit.r1cs.calc_padding_needed(code.k());
+        let pp = circuit.calc_padding_needed(code.k());
         circuit.r1cs.zero_pad(pp.pad_len);
         Verifier { 
             circuit, 

@@ -1,26 +1,31 @@
-use crate::{FrMatrix, Fr, FrVec, NUM_VOLES};
+use std::ops::Mul;
+
+use crate::{FrMatrix, Fr, FrVec, NUM_VOLES, SparseVec, SparseFrMatrix};
 
 #[derive(Clone)]
-pub struct R1CS {
+pub struct FullR1CS {
     pub a_rows: FrMatrix,
     pub b_rows: FrMatrix,
     pub c_rows: FrMatrix,
 }
-impl R1CS {
-    /// Checks whether it is satisfiable by the witness
-    fn witness_check(&self, witness: &FrVec) -> bool {
-        (witness * &self.a_rows)
-        *
-        (witness * &self.b_rows)
-        ==
-        (witness * &self.c_rows)
-    }
+#[derive(Clone)]
+pub struct SparseR1CS {
+    pub a_rows: SparseFrMatrix,
+    pub b_rows: SparseFrMatrix,
+    pub c_rows: SparseFrMatrix
 }
+#[derive(Clone)]
+pub enum R1CS {
+    Sparse(SparseR1CS),
+    Full(FullR1CS)
+}
+
 #[derive(Clone)]
 pub struct R1CSWithMetadata {
     pub r1cs: R1CS,
     pub public_inputs_indices: Vec<usize>,
-    pub public_outputs_indices: Vec<usize>
+    pub public_outputs_indices: Vec<usize>,
+    pub unpadded_wtns_len: usize
 }
 pub struct PadParams {
     pub orig_wtns_len: usize,
@@ -31,30 +36,58 @@ pub struct PadParams {
     pub num_padded_wtns_rows: usize
 }
 impl R1CS {
-    //. Given self and number of desired columns i.e. linear code `k`, returns the amount of padding required
-    pub fn calc_padding_needed(&self, k: usize) -> PadParams {
-        let witness_len = self.a_rows.0[0].0.len(); // An arbitrary R1CS row's length
+    
+    /// Returns Av, Bv, Cv for a vector v
+    fn vec_mul(&self, v: &FrVec) -> (FrVec, FrVec, FrVec) {
+        match self {
+            Self::Sparse(s) => {
+                (v * &s.a_rows, v * &s.b_rows, v * &s.c_rows)
+            }
+            Self::Full(f) => {
+                (v * &f.a_rows, v * &f.b_rows, v * &f.c_rows)
+            }
+        }
+    }
 
+    /// Checks whether it is satisfiable by the witness
+    fn witness_check(&self, witness: &FrVec) -> bool {
+        let (wA, wB, wC) = self.vec_mul(witness);
+        &wA * &wB == wC
+    }
+
+    pub fn zero_pad(&mut self, pad_len: usize) {
+        match self {
+            Self::Full(f) => {
+                for i in 0..f.a_rows.0.len() {
+                    f.a_rows.0[i].zero_pad(pad_len);
+                    f.b_rows.0[i].zero_pad(pad_len);
+                    f.c_rows.0[i].zero_pad(pad_len);
+                }
+            },
+            Self::Sparse(_) => { 
+                // Nothing needed since sprase matrix ignores zero values
+            }
+        }
+        
+    }
+}
+
+impl R1CSWithMetadata {
+    /// Given self and number of desired columns i.e. linear code `k`, returns the amount of padding required
+    pub fn calc_padding_needed(&self, k: usize) -> PadParams {
         // Pad witness so its length is a product of NUM_VOLES
-        // note this pads with a whole new row if it is a product. this is neither intential nor important.
-        let pad_len = k - (witness_len % k);
-        let padded_len = witness_len + pad_len;
+        // note this pads with a whole new row if it is a product. this is neither intentional nor important.
+        let pad_len = k - (self.unpadded_wtns_len % k);
+        let padded_len = self.unpadded_wtns_len + pad_len;
         debug_assert_eq!(padded_len % k, 0);
 
         let num_padded_wtns_rows = padded_len / k; 
         
         PadParams {
-            orig_wtns_len: witness_len,
+            orig_wtns_len: self.unpadded_wtns_len,
             padded_wtns_len: padded_len,
             pad_len,
             num_padded_wtns_rows,
-        }
-    }
-    pub fn zero_pad(&mut self, pad_len: usize) {
-        for i in 0..self.a_rows.0.len() {
-            self.a_rows.0[i].zero_pad(pad_len);
-            self.b_rows.0[i].zero_pad(pad_len);
-            self.c_rows.0[i].zero_pad(pad_len);
         }
     }
 }
@@ -117,14 +150,8 @@ pub mod quicksilver {
             let l = self.u.0.len();
             let r1cs = &self.r1cs_with_metadata.r1cs;
             // Can calculate all linear gates by just dot product of the prover's values with the A, B, and C R1CS rows. These are not multiplication in & out wires
-            let u_a = &self.u * &r1cs.a_rows;
-            let v_a = &self.v * &r1cs.a_rows;
-
-            let u_b = &self.u * &r1cs.b_rows;
-            let v_b = &self.v * &r1cs.b_rows;
-
-            let u_c = &self.u * &r1cs.c_rows;
-            let v_c = &self.v * &r1cs.c_rows;
+            let (u_a, u_b, u_c) = r1cs.vec_mul(&self.u);
+            let (v_a, v_b, v_c) = r1cs.vec_mul(&self.v);
 
             // Quicksilver protocol to transform VOLE into a new VOLE for linear gates
             let new_u = &(&u_b * &v_a + &u_a * &v_b) - &v_c;
@@ -193,9 +220,7 @@ pub mod quicksilver {
         /// NOTE: According to the Quicksilver paper, `challenge` should be given after the values are determined.
         pub fn verify(&self, challenge: &Fr, proof: &ZKP) -> Result<(), Error>{
             let r1cs = &self.r1cs_with_metadata.r1cs;
-            let q_a = &self.q * &r1cs.a_rows;
-            let q_b = &self.q * &r1cs.b_rows;
-            let q_c = &self.q * &r1cs.c_rows;
+            let (q_a, q_b, q_c) = r1cs.vec_mul(&self.q);
 
             // Quicksilver protocol to transform VOLE into a new VOLE that makes multiplcation gates linear relations
             let new_q = &(q_a * q_b) - &q_c.scalar_mul(&self.delta);
@@ -236,7 +261,7 @@ pub mod test {
     use super::{*, quicksilver::Prover};
 
     lazy_static! {
-        pub static ref TEST_R1CS: R1CS = {
+        pub static ref TEST_R1CS: FullR1CS = {
             let a_rows = vec![
                 FrVec(vec![1, 1, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
                 FrVec(vec![2, 0, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
@@ -250,23 +275,24 @@ pub mod test {
                 FrVec(vec![0, 0, 0, 1].iter().map(|x|Fr::from_u128(*x)).collect())
             ];
 
-            R1CS {
-                a_rows: crate::FrMatrix(a_rows),
-                b_rows: crate::FrMatrix(b_rows),
-                c_rows: crate::FrMatrix(c_rows),
+            FullR1CS {
+                a_rows: FrMatrix(a_rows),
+                b_rows: FrMatrix(b_rows),
+                c_rows: FrMatrix(c_rows),
             }
         };
         pub static ref TEST_R1CS_WITH_METADA: R1CSWithMetadata = R1CSWithMetadata { 
-            r1cs: TEST_R1CS.clone(), 
+            r1cs: R1CS::Full(TEST_R1CS.clone()), 
             public_inputs_indices: vec![0,2], 
-            public_outputs_indices: vec![3] 
+            public_outputs_indices: vec![3],
+            unpadded_wtns_len: TEST_R1CS.a_rows.0.len(),
         };
     }
     #[test]
     fn circuit_satisfiability() {
         let witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
-        assert!(TEST_R1CS.witness_check(&witness));
-        assert!(!TEST_R1CS.witness_check(&FrVec(vec![Fr::ONE, Fr::ZERO, Fr::ZERO, Fr::ONE])));
+        assert!(TEST_R1CS_WITH_METADA.r1cs.witness_check(&witness));
+        assert!(!TEST_R1CS_WITH_METADA.r1cs.witness_check(&FrVec(vec![Fr::ONE, Fr::ZERO, Fr::ZERO, Fr::ONE])));
     }
 
     #[test]

@@ -32,6 +32,9 @@ pub struct Fr([u64; 4]);
 #[derive(Debug, Clone)]
 pub struct FrVec(pub Vec<Fr>);
 
+#[derive(Debug, Clone)]
+pub struct SparseVec<T: Mul + Add>(pub Vec<(usize, T)>);
+
 /// Pretty display
 impl Display for FrVec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -138,11 +141,19 @@ impl<'a> Neg for &'a FrVec {
 pub trait DotProduct {
     type Inner;
     fn dot(&self, rhs: &Self) -> Self::Inner;
+    fn sparse_dot(&self, rhs: &SparseVec<Fr>) -> Self::Inner;
 }
 impl DotProduct for FrVec {
     type Inner = Fr;
     fn dot(&self, rhs: &Self) -> Self::Inner {
         self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).sum::<Fr>()
+    }
+    // TODO: see whether this can be optimized
+    fn sparse_dot(&self, rhs: &SparseVec<Fr>) -> Self::Inner {
+        rhs.0.iter().fold(Fr::ZERO, |acc, (idx, val)|{
+            println!("adding {:?}", &(self.0[*idx] * val));
+            acc + &(self.0[*idx] * val)
+        })
     }
 }
 
@@ -205,6 +216,9 @@ impl FrMatrix {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SparseFrMatrix(pub Vec<SparseVec<Fr>>);
+
 
 // impl MulAssign<ElementaryColumnOp> for FrMatrix {
 //     fn mul_assign(&mut self, rhs: ElementaryColumnOp) {
@@ -252,10 +266,44 @@ impl<'a, 'b> Mul<&'b FrMatrix> for &'a FrVec {
     type Output = FrVec;
     fn mul(self, rhs: &'b FrMatrix) -> FrVec {
         FrVec(
-            rhs.0.iter().map(|col| self.dot(col)).collect()
+            rhs.0.iter().map(|row_or_col| self.dot(row_or_col)).collect()
         )
     }
 }
+
+impl<'a, 'b> Mul<&'b SparseFrMatrix> for &'a FrVec {
+    type Output = FrVec;
+    fn mul(self, rhs: &'b SparseFrMatrix) -> FrVec {
+        FrVec(
+            rhs.0.iter().map(|row_or_col| self.sparse_dot(row_or_col)).collect()
+        )
+    }
+}
+
+// // --
+// /// This is weird since the rhs should be the matrix. The reason it is done this way too is so 
+// /// that the R1CS or matrices in general can be an enum of either Sparse or Full, both of which 
+// /// implement Mul<FrVec>
+// impl<'a, 'b> Mul<&'b FrVec> for &'a FrMatrix {
+//     type Output = FrVec;
+//     fn mul(self, lhs: &'b FrVec) -> FrVec {
+//         FrVec(
+//             self.0.iter().map(|row_or_col| lhs.dot(row_or_col)).collect()
+//         )
+//     }
+// }
+
+// /// This is weird since the rhs should be the matrix. The reason it is done this way too is so 
+// /// that the R1CS or matrices in general can be an enum of either Sparse or Full, both of which 
+// /// implement Mul<FrVec>
+// impl<'a, 'b> Mul<&'b FrVec> for &'a Vec<SparseVec<Fr>> {
+//     type Output = FrVec;
+//     fn mul(self, lhs: &'b FrVec) -> FrVec {
+//         FrVec(
+//             self.iter().map(|row_or_col| lhs.sparse_dot(row_or_col)).collect()
+//         )
+//     }
+// }
 
 
 impl PartialEq for FrMatrix {
@@ -337,5 +385,13 @@ mod test {
             FrVec(vec![Fr::from(3u64), Fr::from(6u64), Fr::from(9u64)]),
         ]);
         assert_eq!(x.transpose(), x_t);
+    }
+    
+    // Could cover more edge cases
+    #[test]
+    fn test_sparse_vec() {
+        let a = FrVec(vec![Fr::ZERO, Fr::ZERO, Fr::ZERO, Fr::from_u128(69)]);
+        let b = SparseVec(vec![(3, Fr::from_u128(100)), (2, Fr::from_u128(5))]);
+        assert!(a.sparse_dot(&b) == Fr::from_u128(6900));
     }
 }
