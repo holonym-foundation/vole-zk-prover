@@ -146,11 +146,15 @@ fn read_constraints<R: Read>(
     let mut c_wires = Vec::with_capacity(header.n_constraints as usize);
 
 
-    for _ in 0..header.n_constraints {
-        let n_vec = reader.read_u32::<LittleEndian>().unwrap() as usize;
-        let (a_wires_, a_row_) = read_constraint_vec(&mut reader, n_vec);
-        let (b_wires_, b_row_) = read_constraint_vec(&mut reader, n_vec);
-        let (c_wires_, c_row_) = read_constraint_vec(&mut reader, n_vec);
+    for i in 0..header.n_constraints {
+        println!("reading {}", i);
+        let (a_wires_, a_row_) = read_constraint_vec(&mut reader);
+        println!("read a");
+        let (b_wires_, b_row_) = read_constraint_vec(&mut reader);
+        println!("read b");
+        let (c_wires_, c_row_) = read_constraint_vec(&mut reader);
+        println!("read c");
+
         a_rows.push(FrVec(a_row_));
         b_rows.push(FrVec(b_row_));
         c_rows.push(FrVec(c_row_));

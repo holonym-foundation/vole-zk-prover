@@ -30,7 +30,8 @@ fn read_fr_vec<R: Read>(mut reader: R, l: usize) -> Vec<Fr> {
 }
 
 /// Reads l u32 wire labels and corresponding Frs from a R1CS file
-fn read_constraint_vec<R: Read>(mut reader: R, l: usize) -> (Vec<usize>, Vec<Fr>) {
+fn read_constraint_vec<R: Read>(mut reader: R) -> (Vec<usize>, Vec<Fr>) {
+    let l = reader.read_u32::<LittleEndian>().unwrap() as usize;
     // let mut bufs = vec![[0u8; 32]; l];
     let mut wire_labels = Vec::with_capacity(l);
     let mut frs = Vec::with_capacity(l);
@@ -47,6 +48,6 @@ fn read_constraint_vec<R: Read>(mut reader: R, l: usize) -> (Vec<usize>, Vec<Fr>
             Fr::from_repr(FrRepr(buf)).unwrap(),
         );
     };
-    
+
     (wire_labels, frs)
 }
