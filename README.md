@@ -11,3 +11,8 @@ Geared to be compatible with arbitrary witnesses and R1CS. Witness and their cor
 
 ## Keccak circuits in GF2^k, combined with ECDSA circuits over secp256k1's prime field 
 
+
+
+# Known Issues
+- Issues are documented in the README instead of the Github issues page where they should be instead
+- When interpereting circom circuits, wire to labels map is currently assumed to be the identity map which could cause some circuits with different maps to fail
