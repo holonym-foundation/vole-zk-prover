@@ -6,7 +6,7 @@ use itertools::Itertools;
 use std::{io::{Read, Seek, SeekFrom}, collections::HashMap};
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{Fr, FrVec, FrMatrix, zkp::{R1CS, R1CSWithMetadata, FullR1CS}};
+use crate::{Fr, FrVec, FrMatrix, zkp::{R1CS, R1CSWithMetadata, FullR1CS, SparseR1CS}, SparseFrMatrix, SparseVec};
 
 use super::read_constraint_vec;
 
@@ -27,12 +27,12 @@ pub struct Header {
 
 #[derive(Debug)]
 pub struct Constraints {
-    a_rows: FrMatrix,
-    b_rows: FrMatrix,
-    c_rows: FrMatrix,
-    a_wires: Vec<Vec<usize>>,
-    b_wires: Vec<Vec<usize>>,
-    c_wires: Vec<Vec<usize>>
+    a_rows: SparseFrMatrix,
+    b_rows: SparseFrMatrix,
+    c_rows: SparseFrMatrix,
+    // a_wires: Vec<Vec<usize>>,
+    // b_wires: Vec<Vec<usize>>,
+    // c_wires: Vec<Vec<usize>>
 }
 
 #[derive(Debug)]
@@ -48,7 +48,7 @@ impl R1CSFile {
     pub fn to_crate_format(self) -> R1CSWithMetadata {
         println!("WIRE MAP IS {:?}", self.wire_mapping);
         // TODO: wire map
-        let r1cs = R1CS::Full(FullR1CS {
+        let r1cs = R1CS::Sparse(SparseR1CS {
             a_rows: self.constraints.a_rows,
             b_rows: self.constraints.b_rows,
             c_rows: self.constraints.c_rows
@@ -161,29 +161,21 @@ fn read_constraints<R: Read>(
     let mut b_rows = Vec::with_capacity(header.n_constraints as usize);
     let mut c_rows = Vec::with_capacity(header.n_constraints as usize);
 
-    let mut a_wires = Vec::with_capacity(header.n_constraints as usize);
-    let mut b_wires = Vec::with_capacity(header.n_constraints as usize);
-    let mut c_wires = Vec::with_capacity(header.n_constraints as usize);
+    // let mut a_wires = Vec::with_capacity(header.n_constraints as usize);
+    // let mut b_wires = Vec::with_capacity(header.n_constraints as usize);
+    // let mut c_wires = Vec::with_capacity(header.n_constraints as usize);
 
-
+    let mut constraints: Vec<SparseVec<Fr>> = Vec::with_capacity(header.n_constraints as usize);
     for i in 0..header.n_constraints {
-        let (a_wires_, a_row_) = read_constraint_vec(&mut reader);
-        let (b_wires_, b_row_) = read_constraint_vec(&mut reader);
-        let (c_wires_, c_row_) = read_constraint_vec(&mut reader);
-
-        a_rows.push(FrVec(a_row_));
-        b_rows.push(FrVec(b_row_));
-        c_rows.push(FrVec(c_row_));
-
-        a_wires.push(a_wires_);
-        b_wires.push(b_wires_);
-        c_wires.push(c_wires_);
+        a_rows.push(read_constraint_vec(&mut reader));
+        b_rows.push(read_constraint_vec(&mut reader));
+        c_rows.push(read_constraint_vec(&mut reader));
     }
-    let a_rows = FrMatrix(a_rows);
-    let b_rows = FrMatrix(b_rows);
-    let c_rows = FrMatrix(c_rows);
+    let a_rows = SparseFrMatrix(a_rows);
+    let b_rows = SparseFrMatrix(b_rows);
+    let c_rows = SparseFrMatrix(c_rows);
 
-    Constraints { a_rows, b_rows, c_rows, a_wires, b_wires, c_wires }
+    Constraints { a_rows, b_rows, c_rows }
 }
 
 fn read_map<R: Read>(mut reader: R, size: u64, header: &Header) -> Result<Vec<u64>, Error> {
