@@ -32,16 +32,15 @@ fn read_fr_vec<R: Read>(mut reader: R, l: usize) -> Vec<Fr> {
 /// Reads l u32 wire labels and corresponding Frs from a R1CS file
 fn read_constraint_vec<R: Read>(mut reader: R) -> (Vec<usize>, Vec<Fr>) {
     let l = reader.read_u32::<LittleEndian>().unwrap() as usize;
-    // let mut bufs = vec![[0u8; 32]; l];
     let mut wire_labels = Vec::with_capacity(l);
     let mut frs = Vec::with_capacity(l);
-    for i in 0..l {
+    for _ in 0..l {
         wire_labels.push(
             reader.read_u32::<LittleEndian>().unwrap() as usize
         );
 
         let mut buf = [0u8; 32];
-        reader.read_exact(&mut buf).unwrap();
+        reader.read_exact(&mut buf).unwrap(); 
         buf.reverse();
         
         frs.push(
@@ -50,4 +49,26 @@ fn read_constraint_vec<R: Read>(mut reader: R) -> (Vec<usize>, Vec<Fr>) {
     };
 
     (wire_labels, frs)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{fs::File, io::BufReader};
+
+    use crate::{circom::{witness::wtns_from_reader}, actors::test_helpers::e2e_test};
+
+    use super::{*, r1cs::R1CSFile};
+    #[test]
+    fn e2e_r1cs_wtns_files() {
+        let wtns_file = File::open("src/circom/examples/witness.wtns").unwrap();
+        let mut wtns_reader = BufReader::new(wtns_file);
+        let witness = wtns_from_reader(wtns_reader).unwrap();
+
+        let r1cs_file = File::open("src/circom/examples/test.r1cs").unwrap();
+        let mut r1cs_reader = BufReader::new(r1cs_file);
+        let r1cs = R1CSFile::from_reader(r1cs_reader).unwrap().to_crate_format();
+
+        assert!(e2e_test(witness, r1cs).is_ok());
+        
+    }
 }

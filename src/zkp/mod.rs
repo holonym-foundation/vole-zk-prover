@@ -2,9 +2,9 @@ use crate::{FrMatrix, Fr, FrVec, NUM_VOLES};
 
 #[derive(Clone)]
 pub struct R1CS {
-    a_rows: FrMatrix,
-    b_rows: FrMatrix,
-    c_rows: FrMatrix,
+    pub a_rows: FrMatrix,
+    pub b_rows: FrMatrix,
+    pub c_rows: FrMatrix,
 }
 impl R1CS {
     /// Checks whether it is satisfiable by the witness
@@ -86,7 +86,6 @@ pub mod quicksilver {
         /// Creates a prover from VitH U1 and R matrices of equal dimension with 2l+2 rows where the witness is split into l chunks of length vole_length
         /// Takes ownership and mutates most of its inputs to something useless
         pub fn from_vith(mut u1_rows: FrMatrix, mut r_rows: FrMatrix, mut witness_rows: FrMatrix, r1cswm: R1CSWithMetadata) -> Prover {
-            println!("witness rows:\n{}", witness_rows);
             let r1cs = &r1cswm.r1cs;
             // println!("VOLE dimensions: {:?}", (u1_rows.0.len(), u1_rows.0[0].0.len()));
             // println!("R1CS dimensions: {:?}", (r1cs.a_rows.0.len(), r1cs.a_rows.0[0].0.len()));
@@ -172,8 +171,6 @@ pub mod quicksilver {
         /// Creates a verifier from VitH S and D matrices where D is the prover's commitment to the witness
         /// Takes ownership and mutates most of its inputs to something useless
         pub fn from_vith(mut s_rows: &FrMatrix, delta: Fr, witness_comm: &FrMatrix, r1cswm: R1CSWithMetadata) -> Verifier {
-            println!("witness commitment:\n{}", witness_comm);
-            println!("Q: {}", s_rows);
 
             let r1cs = &r1cswm.r1cs;
             // Adjust S by adding the witness to its first part
@@ -183,7 +180,6 @@ pub mod quicksilver {
             s_adjustment.0.push(FrVec(vec![Fr::ZERO; row_len]));
 
             let mut s_adjusted = s_rows + &s_adjustment;
-            println!("lengths {}, {}", s_adjusted.0.len(),  s_adjusted.0[0].0.len());
             
             // assert!((r1cs.a_rows.0.len() == s_adjusted.0.len()) /* && (r1cs.a_rows.0[0].0.len() == q_rows.0[0].0.len()) */, "VOLE dimensions must correspond R1CS");
             let vith_size = s_adjusted.0.len() * s_adjusted.0[0].0.len();

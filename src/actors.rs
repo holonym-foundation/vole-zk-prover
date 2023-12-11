@@ -148,8 +148,6 @@ impl Prover {
         self.witness_comm = Some(witness_comm.clone());
         if self.num_voles % self.code.q != 0 { return Err(anyhow!("invalid num_voles param")) };
         let challenge_hash = challenge_from_seed(&seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
-        println!("prover challenge hash {}", challenge_hash);
-        println!("new u & v columns {} \n {}", &new_u_rows.transpose(), v_cols);
         let consistency_check = calc_consistency_check(&challenge_hash, &new_u_rows.transpose(), &v_cols);
         
 
@@ -322,13 +320,14 @@ pub struct PublicOpenings {
 
 }
 
-#[cfg(test)]
-mod test {
-    use ff::{PrimeField, Field};
-    use crate::{subspacevole::RAAACode, zkp::{self, R1CSWithMetadata}, actors::actors::{Prover, Verifier}, Fr, FrVec, circom::witness};
-    use super::*;
+pub mod test_helpers {
+    use anyhow::Error;
 
-    fn e2e_test(witness: FrVec, circuit: R1CSWithMetadata) -> Result<actors::PublicOpenings, anyhow::Error>{
+    use crate::{FrVec, zkp::R1CSWithMetadata};
+
+    use super::actors::{Prover, PublicOpenings, Verifier};
+
+    pub fn e2e_test(witness: FrVec, circuit: R1CSWithMetadata) -> Result<PublicOpenings, Error>{
         let mut prover = Prover::from_witness_and_circuit_unpadded(witness.clone(), circuit.clone());
         let vole_comm = prover.mkvole().unwrap();
         let proof = prover.prove().unwrap();
@@ -336,6 +335,14 @@ mod test {
         let verifier = Verifier::from_circuit(circuit);
         verifier.verify(&vole_comm, &proof)
     }
+}
+#[cfg(test)]
+mod test {
+    use ff::{PrimeField, Field};
+    use crate::{subspacevole::RAAACode, zkp::{self, R1CSWithMetadata}, actors::{actors::{Prover, Verifier}, test_helpers::e2e_test}, Fr, FrVec, circom::witness};
+    use super::*;
+
+    
     #[test]
     fn prover_verifier_full_integration_tiny_circuit() {
         let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();

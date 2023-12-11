@@ -11,7 +11,7 @@ type Witness = Vec<Fr>;
 
 /// Parses bytes in a circom .wtns binary format
 /// Borrowed extensively from Nova Scotia https://github.com/nalinbhardwaj/Nova-Scotia/blob/main/src/circom/reader.rs
-fn wnts_from_reader<R: Read>(mut reader: R) -> Result<FrVec, Error> {
+pub fn wtns_from_reader<R: Read>(mut reader: R) -> Result<FrVec, Error> {
     let mut wtns_header = [0u8; 4];
     reader.read_exact(&mut wtns_header)?;
     if wtns_header != "wtns".as_bytes() {
@@ -69,7 +69,7 @@ mod test {
     fn read_wtns_file() {
         let file = File::open("src/circom/examples/witness.wtns").unwrap();
         let mut buf_reader = BufReader::new(file);
-        let witness = wnts_from_reader(buf_reader).unwrap();
+        let witness = wtns_from_reader(buf_reader).unwrap();
         println!("Witness\n{:?}", witness.0);
         println!("Witness\n{}", witness);
     }
