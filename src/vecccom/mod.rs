@@ -89,7 +89,6 @@ pub fn reconstruct_commitment(
     revealed_seed_idx: bool, 
     proof: &[u8; 32]
 ) -> [u8; 32] {
-    // println!("rec_revealed: {:?}\nrec_proof: {:?}", revealed_seed, proof);
     let digest_of_revealed = *blake3::hash(revealed_seed).as_bytes();
     let preimage = 
     if revealed_seed_idx {

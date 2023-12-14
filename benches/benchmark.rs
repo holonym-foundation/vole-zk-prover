@@ -1,21 +1,28 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use ff::{Field, PrimeField};
+use lazy_static::lazy_static;
 use nalgebra::SMatrix;
 use rand::{rngs::ThreadRng, Rng};
-use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode, FrMatrix};
-// use volonym::rand_fr_vec;
+use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode, FrMatrix, circom::{witness::wtns_from_reader, r1cs::R1CSFile}, actors::actors::Prover, zkp::R1CSWithMetadata, SparseVec};
+use std::{fs::File, io::BufReader};
 
-// fn matmul<const N: usize>() {
-//     let x1 = SMatrix::<Fr, N, N>::from_fn(|row, col| {
-//         Fr::random(&mut ThreadRng::default())
-//     });
-
-//     let x1 = SMatrix::<Fr, N, N>::from_fn(|row, col| {
-//         Fr::random(&mut ThreadRng::default())
-//     });
-
-//     let _ = x1 * x1;
-// }
+lazy_static! {
+    pub static ref WITNESS: FrVec = {
+        let wtns_file = File::open("src/circom/examples/witness.wtns").unwrap();
+        let mut wtns_reader = BufReader::new(wtns_file);
+        wtns_from_reader(wtns_reader).unwrap()
+    };
+    pub static ref CIRCUIT: R1CSWithMetadata = {
+        let r1cs_file = File::open("src/circom/examples/test.r1cs").unwrap();
+        let mut r1cs_reader = BufReader::new(r1cs_file);
+        R1CSFile::from_reader(r1cs_reader).unwrap().to_crate_format()
+    };
+}
+fn load_and_prove() {
+    let mut prover = Prover::from_witness_and_circuit_unpadded(WITNESS.clone(), CIRCUIT.clone());
+    let vole_comm = prover.mkvole().unwrap();
+    let proof = prover.prove().unwrap();
+}
 
 /// Subroutine in matrix multiplication
 fn matrix_row_col_dot<const N: usize>(a: &SMatrix<Fr, N, 1>, b: &SMatrix<Fr, 1, N>) -> Fr {
@@ -46,8 +53,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     let ux: Vec<u64> = (0..1024).map(|_|ThreadRng::default().gen()).collect();
     let uy: Vec<u64> = (0..1024).map(|_|ThreadRng::default().gen()).collect();
 
-    let fvx = FrVec((0..640).map(|_|Fr::random(&mut ThreadRng::default())).collect::<Vec<_>>());
-    let fvy = FrVec((0..640).map(|_|Fr::random(&mut ThreadRng::default())).collect::<Vec<_>>());
+    let fvx = FrVec::random(640);
+    let fvy = FrVec::random(640);
 
     let a_ = Fr::random(&mut ThreadRng::default());
     let b_ = Fr::random(&mut ThreadRng::default());
@@ -57,6 +64,14 @@ fn criterion_benchmark(c: &mut Criterion) {
             FrVec((0..1024).map(|_|Fr::random(&mut ThreadRng::default())).collect::<Vec<_>>())
         ).collect()
     );
+
+    let non_sparse_vec_1 = FrVec::random(640);
+    let non_sparse_vec_2 = FrVec::random(640);
+    let sparse_vec = SparseVec(vec![
+        (5, Fr::random(&mut ThreadRng::default())), 
+        (21, Fr::random(&mut ThreadRng::default())), 
+        (615, Fr::random(&mut ThreadRng::default())), 
+    ]);
     let mut repr = [0u8; 32];
     ThreadRng::default().fill(&mut repr);
     group.sample_size(10);
@@ -84,9 +99,15 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("expand to 4 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 4)));
     // group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
     // group.bench_function("1024 x 1024 transpose", |b|b.iter(||black_box(fr_matrix.clone()).transpose()));
-    group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
+    // group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
     // // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed()), 10)));
     // // c.bench_function("1048576 random Frs", |b| b.iter(|| rand_fr_vec(black_box(20))));
+    // group.bench_function("Sparse Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).sparse_dot(black_box(&sparse_vec))));
+    // group.bench_function("Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).dot(black_box(&non_sparse_vec_2))));
+    group.bench_function("Load R1CS, Witness, and Create the VOLE in the Head Quicksilver proof", |b|b.iter(load_and_prove));
+
+
+
 }
 
 criterion_group!(benches, criterion_benchmark);

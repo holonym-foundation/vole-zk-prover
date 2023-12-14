@@ -27,6 +27,7 @@ pub struct R1CSWithMetadata {
     pub public_outputs_indices: Vec<usize>,
     pub unpadded_wtns_len: usize
 }
+#[derive(Debug)]
 pub struct PadParams {
     pub orig_wtns_len: usize,
     pub padded_wtns_len: usize,
@@ -92,6 +93,8 @@ impl R1CSWithMetadata {
     }
 }
 pub mod quicksilver {
+    use std::time::Instant;
+
     use anyhow::{Error, anyhow, bail, Ok};
     use ff::Field;
 
@@ -149,25 +152,22 @@ pub mod quicksilver {
         pub fn prove(&self, challenge: &Fr) -> ZKP {
             let l = self.u.0.len();
             let r1cs = &self.r1cs_with_metadata.r1cs;
+            let mut start = Instant::now();
+
             // Can calculate all linear gates by just dot product of the prover's values with the A, B, and C R1CS rows. These are not multiplication in & out wires
             let (u_a, u_b, u_c) = r1cs.vec_mul(&self.u);
             let (v_a, v_b, v_c) = r1cs.vec_mul(&self.v);
-
+            println!("QuickSilver Linear gates {}", start.elapsed().as_micros()); start = Instant::now();
             // Quicksilver protocol to transform VOLE into a new VOLE for linear gates
             let new_u = &(&u_b * &v_a + &u_a * &v_b) - &v_c;
             let new_v = &v_a * &v_b;
-            
+            println!("QuickSilver Transformation {}", start.elapsed().as_micros()); start = Instant::now();
             let challenge_vec = get_challenge_vec(challenge, l);
+            println!("QuickSilver Challenge {}", start.elapsed().as_micros()); start = Instant::now();
+            let mul_proof = (new_u.dot(&challenge_vec), new_v.dot(&challenge_vec));
+            println!("QuickSilver Multiplciation proof {}", start.elapsed().as_micros()); start = Instant::now();
 
-            ZKP {
-                mul_proof: (new_u.dot(&challenge_vec), new_v.dot(&challenge_vec)),
-                // public_input_openings: self.r1cs_with_metadata.public_inputs_indices.iter().map(
-                //     |i|(self.u.0[*i], self.v.0[*i])
-                // ).collect(),
-                // public_output_openings: self.r1cs_with_metadata.public_outputs_indices.iter().map(
-                //     |i|(self.u.0[*i], self.v.0[*i])
-                // ).collect(),
-            }
+            ZKP { mul_proof }
             
 
         }

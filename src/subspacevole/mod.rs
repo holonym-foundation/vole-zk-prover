@@ -477,13 +477,6 @@ mod test {
         let input = FrVec(input);
         let permuted = RAAACode::interleave(&input, &forward);
         let inverse_permuted = RAAACode::interleave(&permuted, &backward);
-        println!("input:\n{:?}\n\nforward:\n{:?}\n\nbackward:\n{:?}\n\npermute:\n{:?}\n\ninverse_permute:\n{:?}\n\n", 
-            &input,
-            &forward,
-            &backward,
-            &permuted,
-            &inverse_permuted
-        );
         assert_eq!(input, inverse_permuted);
     }
     #[test]
@@ -561,7 +554,6 @@ mod test {
         let q_rows = q_cols.transpose();
 
         let code = RAAACode::rand_default();
-        // println!("single u length per VOLE {:?}\nNumber of deltas {:?}\n Single q length per VOLE{:?}. ", &test_mole.prover_outputs[0].u.len(), &test_mole.verifier_outputs.len(), &test_mole.verifier_outputs[0].q.len());
 
         let (new_us, correction) = code.get_prover_correction(
             &u_rows

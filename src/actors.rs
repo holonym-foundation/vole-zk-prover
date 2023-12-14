@@ -1,5 +1,7 @@
 ///! Provides the prover and verifier structs
 pub mod actors {
+    use std::time::Instant;
+
     use anyhow::{Error, anyhow, Ok};
     use ff::{PrimeField, Field};
     use rand::{rngs::ThreadRng, RngCore};
@@ -68,8 +70,6 @@ pub struct Proof {
     pub s_matrix: FrMatrix,
     /// Proof S was constructed correctly
     pub s_consistency_check: FrVec,
-    #[cfg(test)]
-    prover: quicksilver::Prover
 }
 
 pub struct SubspaceVOLEOpening {
@@ -93,7 +93,6 @@ impl Prover {
         let pp = circuit.calc_padding_needed(k);
         witness.zero_pad(pp.pad_len);
         circuit.r1cs.zero_pad(pp.pad_len);
-
         let mut witness_rows = Vec::with_capacity(pp.num_padded_wtns_rows);
         let mut start_idx = 0;
         for _i in 0..pp.num_padded_wtns_rows {
@@ -197,23 +196,35 @@ impl Prover {
 
     /// Wrapper for all other prover functions
     pub fn prove(&mut self) -> Result<Proof, Error> {
+        let mut start = Instant::now();
         let err_uncompleted = ||anyhow!("VOLE must be completed before this step");
         let svs = self.subspace_vole_secrets.as_ref().ok_or(err_uncompleted())?;
         let seed_comm = self.seed_commitment.as_ref().ok_or(err_uncompleted())?;
         let witness_comm = self.witness_comm.as_ref().ok_or(err_uncompleted())?;
+
+        println!("Commited {}", start.elapsed().as_micros()); start = Instant::now();
         // TODO: without so much cloning
         let prover = quicksilver::Prover::from_vith(svs.u1.clone(), svs.u2.clone(), self.witness.clone(), self.circuit.clone());
+        
+        println!("made prover from VitH {}", start.elapsed().as_micros()); start = Instant::now();
+
         let challenge = calc_quicksilver_challenge(seed_comm, &witness_comm);
         let zkp = prover.prove(&challenge); 
+
+        println!("made proof {}", start.elapsed().as_micros()); start = Instant::now();
 
         let public_openings = PublicOpenings {
             public_inputs: prover.open_public(&self.circuit.public_inputs_indices),
             public_outputs: prover.open_public(&self.circuit.public_outputs_indices)
         };
+
+        println!("made public openings {}", start.elapsed().as_micros()); start = Instant::now();
+
         
         let challenges = calc_other_challenges(seed_comm, witness_comm, &zkp, self.vole_length, self.num_voles, &public_openings);
         let (s_matrix, s_consistency_check) = self.s_matrix_with_consistency_proof(&challenges.vith_delta, &challenges.s_challenge)?;
 
+        
         let mut openings = Vec::with_capacity(self.num_voles);
         let mut opening_proofs = Vec::with_capacity(self.num_voles);
         for i in 0..svs.seeds.len() {
@@ -222,6 +233,8 @@ impl Prover {
                 proof_for_revealed_seed(&svs.seeds[i][1 - challenges.delta_choices[i]])
             );
         };
+        println!("challenges, consistency check, opening proofs: {}", start.elapsed().as_micros()); start = Instant::now();
+
 
         Ok(
             Proof { 
@@ -230,8 +243,6 @@ impl Prover {
                 s_consistency_check,
                 public_openings,
                 seed_openings : SubspaceVOLEOpening { seed_opens: openings, seed_proofs: opening_proofs },
-                #[cfg(test)]
-                prover
             }
         )
     }

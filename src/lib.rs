@@ -151,7 +151,6 @@ impl DotProduct for FrVec {
     // TODO: see whether this can be optimized
     fn sparse_dot(&self, rhs: &SparseVec<Fr>) -> Self::Inner {
         rhs.0.iter().fold(Fr::ZERO, |acc, (idx, val)|{
-            println!("adding {:?}", &(self.0[*idx] * val));
             acc + &(self.0[*idx] * val)
         })
     }

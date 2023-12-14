@@ -1,2 +1,10 @@
 *.wasm
+src/circom/examples/*.r1cs
+src/circom/examples/*.wtns
+src/circom/examples/test.r1cs
+*.r1cs
+*.wtns
+test.r1cs
+test.wtns
+node_modules
 /target
