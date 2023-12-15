@@ -121,8 +121,7 @@ pub mod quicksilver {
     impl Prover {
         /// Creates a prover from VitH U1 and R matrices of equal dimension with 2l+2 rows where the witness is split into l chunks of length vole_length
         /// Takes ownership and mutates most of its inputs to something useless
-        pub fn from_vith(mut u1_rows: FrMatrix, mut r_rows: FrMatrix, mut witness_rows: FrMatrix, r1cswm: R1CSWithMetadata) -> Prover {
-            let r1cs = &r1cswm.r1cs;
+        pub fn from_vith(u1_rows: FrMatrix, mut r_rows: FrMatrix, mut witness_rows: FrMatrix, r1cswm: R1CSWithMetadata) -> Prover {
             // println!("VOLE dimensions: {:?}", (u1_rows.0.len(), u1_rows.0[0].0.len()));
             // println!("R1CS dimensions: {:?}", (r1cs.a_rows.0.len(), r1cs.a_rows.0[0].0.len()));
             assert!((u1_rows.0.len() == r_rows.0.len()) && (u1_rows.0[0].0.len() == r_rows.0[0].0.len()), "u and v must be same dimension");
@@ -197,9 +196,7 @@ pub mod quicksilver {
     impl Verifier {
         /// Creates a verifier from VitH S and D matrices where D is the prover's commitment to the witness
         /// Takes ownership and mutates most of its inputs to something useless
-        pub fn from_vith(mut s_rows: &FrMatrix, delta: Fr, witness_comm: &FrMatrix, r1cswm: R1CSWithMetadata) -> Verifier {
-
-            let r1cs = &r1cswm.r1cs;
+        pub fn from_vith(s_rows: &FrMatrix, delta: Fr, witness_comm: &FrMatrix, r1cswm: R1CSWithMetadata) -> Verifier {
             // Adjust S by adding the witness to its first part
             let mut s_adjustment = witness_comm.scalar_mul(&delta);
             let row_len = s_adjustment.0[0].0.len();
