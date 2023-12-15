@@ -46,7 +46,6 @@ pub struct R1CSFile {
 impl R1CSFile {
     /// Converts this to the R1CS format used by the rest of this crate
     pub fn to_crate_format(self) -> R1CSWithMetadata {
-        // TODO: wire map
         let r1cs_ = SparseR1CS {
             a_rows: self.constraints.a_rows,
             b_rows: self.constraints.b_rows,
@@ -56,12 +55,10 @@ impl R1CSFile {
         let public_outputs_indices = (1 .. pub_in_start).collect_vec();
         let public_inputs_indices = (pub_in_start .. pub_in_start + self.header.n_pub_in as usize).collect_vec();
         let unpadded_wtns_len = self.header.n_wires as usize; // overflow is possible but not practical given circuits of feasible size
-        println!("witness length {}", unpadded_wtns_len);
-        println!("number of constraints in A {}", r1cs_.a_rows.0.len());
-        println!("total. labels per constraint in A {}", r1cs_.a_rows.0.iter().map(|a|a.0.len()).sum::<usize>());
         let r1cs = R1CS::Sparse(r1cs_);
         R1CSWithMetadata { r1cs, public_inputs_indices, public_outputs_indices, unpadded_wtns_len }
     }
+    
     /// Parses bytes in a circom .r1cs binary format
     pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<Self, Error> {
         let mut magic = [0u8; 4];
@@ -209,6 +206,11 @@ mod test {
 
     #[test]
     fn correct_public_indices() {
-        todo!("Make sure it doesn't say the wrong indices should be opened :D")
+        let file = File::open("src/circom/examples/test.r1cs").unwrap();
+        let mut buf_reader = BufReader::new(file);
+        let r1cs = R1CSFile::from_reader(buf_reader).unwrap();
+        let r1cs = r1cs.to_crate_format();
+        assert!(r1cs.public_outputs_indices == (1..258).collect_vec());
+        assert!(r1cs.public_inputs_indices == (258..260).collect_vec());
     }
 }
