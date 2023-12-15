@@ -3,10 +3,18 @@ include "node_modules/circomlib/circuits/sha256/sha256.circom";
 include "node_modules/circomlib/circuits/bitify.circom";
 
 template TestCircuit(Sha256IterationsMinusOne) {  
-   signal input testInput;
-   signal output testOutput[256];
+   signal input testInputs[3];
+   signal input publicInput;
+   signal input anotherPublicInput;
+   signal output digest[256];
+   signal output unimportantOutput;
+
+   signal sig <== publicInput * testInputs[0] + testInputs[1] + testInputs[2];
+   unimportantOutput <== sig * anotherPublicInput;
+
    component n2b = Num2Bits(254);
-   n2b.in <== testInput;
+
+   n2b.in <== testInputs[0] + testInputs[0] + testInputs[0] + testInputs[0];
    
    component initialHash = Sha256(256);
    initialHash.in[0] <== 0;
@@ -25,7 +33,7 @@ template TestCircuit(Sha256IterationsMinusOne) {
       newHashes[j].in <== newHashes[j-1].out;
    }
 
-   testOutput <== newHashes[Sha256IterationsMinusOne-1].out;
+   digest <== newHashes[Sha256IterationsMinusOne-1].out;
    
    // // Declaration of signals.  
    // signal input a[4];  
@@ -38,4 +46,4 @@ template TestCircuit(Sha256IterationsMinusOne) {
    // c[2] <== a[3] * b[2] + b[3];
 }
 
-component main = TestCircuit(9);
+component main { public [publicInput, anotherPublicInput] } = TestCircuit(2);
