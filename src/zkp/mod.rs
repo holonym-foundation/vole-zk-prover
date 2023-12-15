@@ -102,7 +102,7 @@ pub mod quicksilver {
 
     use super::{R1CS, R1CSWithMetadata};
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     pub struct ZKP {
         /// Quicksilver multiplication proof of two field elements
         pub mul_proof: (Fr, Fr),

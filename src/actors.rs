@@ -59,6 +59,7 @@ pub struct ProverCommitment {
     pub consistency_check: (FrVec, FrVec)
 }
 
+#[derive(Clone)]
 pub struct Proof {
     pub zkp: ZKP,
     // pub prover_commitment: ProverCommitment,
@@ -72,6 +73,7 @@ pub struct Proof {
     pub s_consistency_check: FrVec,
 }
 
+#[derive(Clone)]
 pub struct SubspaceVOLEOpening {
     /// Openings of one seed per pair
     pub seed_opens: Vec<[u8; 32]>,
@@ -91,9 +93,11 @@ impl Prover {
         let code = RAAACode::rand_default();
         let k = code.k();
         let pp = circuit.calc_padding_needed(k);
+        
         witness.zero_pad(pp.pad_len);
         circuit.r1cs.zero_pad(pp.pad_len);
         let mut witness_rows = Vec::with_capacity(pp.num_padded_wtns_rows);
+        
         let mut start_idx = 0;
         for _i in 0..pp.num_padded_wtns_rows {
             witness_rows.push(FrVec(
@@ -349,6 +353,7 @@ pub mod test_helpers {
 }
 #[cfg(test)]
 mod test {
+    use anyhow::anyhow;
     use ff::{PrimeField, Field};
     use crate::{subspacevole::RAAACode, zkp::{self, R1CSWithMetadata}, actors::{actors::{Prover, Verifier}, test_helpers::e2e_test}, Fr, FrVec, circom::witness};
     use super::*;
@@ -377,6 +382,39 @@ mod test {
     }
     #[test]
     fn public_values() {
-        todo!("test invalid public inputs fail")
+        let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
+        let witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
+
+        let mut prover = Prover::from_witness_and_circuit_unpadded(witness.clone(), circuit.clone());
+        let vole_comm = prover.mkvole().unwrap();
+        let correct_proof = prover.prove().unwrap();
+
+        let verifier = Verifier::from_circuit(circuit);
+        assert!(verifier.verify(&vole_comm, &correct_proof).is_ok());
+        
+        // Test every value in this small array of public values is accounted for (assuming it is constrained)
+        for i in 0..correct_proof.public_openings.public_inputs.len() {
+            let mut incorrect_proof = correct_proof.clone();
+            
+            incorrect_proof.public_openings.public_inputs[i].0 += Fr::ONE;
+            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+            
+            incorrect_proof = correct_proof.clone();
+
+            incorrect_proof.public_openings.public_inputs[i].1 += Fr::ONE;
+            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+        }
+        // Test every value in this small array of public values is accounted for (assuming it is constrained)
+        for i in 0..correct_proof.public_openings.public_outputs.len() {
+            let mut incorrect_proof = correct_proof.clone();
+            
+            incorrect_proof.public_openings.public_outputs[i].0 += Fr::ONE;
+            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+
+            incorrect_proof = correct_proof.clone();
+
+            incorrect_proof.public_openings.public_outputs[i].0 += Fr::ONE;
+            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+        }
     }
 }

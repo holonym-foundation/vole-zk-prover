@@ -6,5 +6,6 @@ src/circom/examples/test.r1cs
 *.wtns
 test.r1cs
 test.wtns
+.DS_Store
 node_modules
 /target
