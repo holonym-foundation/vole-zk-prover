@@ -93,7 +93,7 @@ impl Prover {
         let code = RAAACode::rand_default();
         let k = code.k();
         let pp = circuit.calc_padding_needed(k);
-        
+
         witness.zero_pad(pp.pad_len);
         circuit.r1cs.zero_pad(pp.pad_len);
         let mut witness_rows = Vec::with_capacity(pp.num_padded_wtns_rows);
@@ -375,11 +375,13 @@ mod test {
         }
     }
 
-    #[test]
-    fn prover_verifier_full_integration_circuit_gt_1024_constraints() {
-        let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
-        todo!()
-    }
+    // /// This is already covered in the circom tests
+    // #[test]
+    // fn prover_verifier_full_integration_circuit_gt_1024_constraints() {
+    //     let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();
+    //     todo!()
+    // }
+
     #[test]
     fn public_values() {
         let circuit = zkp::test::TEST_R1CS_WITH_METADA.clone();

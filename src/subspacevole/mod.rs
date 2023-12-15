@@ -598,9 +598,10 @@ mod test {
         assert!(code.check_parity_batch(&codewords).is_err())
 
     }
-    #[test]
-    fn consistency_check() {
-        todo!()
-    }
+    // /// This is tested in the integration tests for e2e prover and verifier
+    // #[test]
+    // fn consistency_check() {
+    //     todo!()
+    // }
     
 }

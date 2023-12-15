@@ -320,8 +320,9 @@ pub mod test {
         // TODO: assert a bad witness fails (is this necessary tho bc ZK protocol will catch that lol)
     }
 
-    #[test]
-    pub fn from_vith() {
-        todo!()
-    }
+    // /// This is covered by practiaclly every single integration tests so commenting it instead of implementing it
+    // #[test]
+    // pub fn from_vith() {
+    //     todo!()
+    // }
 }

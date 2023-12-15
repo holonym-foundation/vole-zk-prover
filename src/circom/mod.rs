@@ -59,11 +59,11 @@ mod test {
     #[test]
     fn e2e_r1cs_wtns_files() {
         let wtns_file = File::open("src/circom/examples/witness.wtns").unwrap();
-        let mut wtns_reader = BufReader::new(wtns_file);
+        let wtns_reader = BufReader::new(wtns_file);
         let witness = wtns_from_reader(wtns_reader).unwrap();
 
         let r1cs_file = File::open("src/circom/examples/test.r1cs").unwrap();
-        let mut r1cs_reader = BufReader::new(r1cs_file);
+        let r1cs_reader = BufReader::new(r1cs_file);
         let r1cs = R1CSFile::from_reader(r1cs_reader).unwrap().to_crate_format();
 
         assert!(e2e_test(witness, r1cs).is_ok());
