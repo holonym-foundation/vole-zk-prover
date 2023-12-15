@@ -55,7 +55,7 @@ impl R1CSFile {
         let pub_in_start = 1 + self.header.n_pub_out as usize;
         let public_outputs_indices = (1 .. pub_in_start).collect_vec();
         let public_inputs_indices = (pub_in_start .. pub_in_start + self.header.n_pub_in as usize).collect_vec();
-        let unpadded_wtns_len = (self.header.n_pub_in + self.header.n_wires) as usize; // overflow is possible but not practical given circuits of feasible size
+        let unpadded_wtns_len = self.header.n_wires as usize; // overflow is possible but not practical given circuits of feasible size
         println!("witness length {}", unpadded_wtns_len);
         println!("number of constraints in A {}", r1cs_.a_rows.0.len());
         println!("total. labels per constraint in A {}", r1cs_.a_rows.0.iter().map(|a|a.0.len()).sum::<usize>());
@@ -205,5 +205,10 @@ mod test {
         let file = File::open("src/circom/examples/test.r1cs").unwrap();
         let mut buf_reader = BufReader::new(file);
         let r1cs = R1CSFile::from_reader(buf_reader).unwrap();
+    }
+
+    #[test]
+    fn correct_public_indices() {
+        todo!("Make sure it doesn't say the wrong indices should be opened :D")
     }
 }
