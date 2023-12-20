@@ -7,7 +7,9 @@ pub mod challenges;
 pub mod smallvole;
 pub mod vecccom;
 pub mod actors;
+pub mod format;
 use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::Output, fmt::Display};
+use wasm_bindgen::prelude::*;
 
 use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
@@ -365,7 +367,6 @@ impl num_traits::Zero for Fr {
 // fn matmul_fr() {
 
 // }
-
 
 #[cfg(test)]
 mod test {
