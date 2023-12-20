@@ -67,6 +67,8 @@ mod test {
     use ff::Field;
     use rand::thread_rng;
 
+    use crate::FrVec;
+
     use super::*;
     #[test]
     fn serde_fr() {
@@ -81,5 +83,17 @@ mod test {
             let d: Fr = bincode::deserialize(&s).unwrap();
             assert_eq!(*x, d);
         })
+    }
+    #[test]
+    fn serde_fr_vec() {
+        let zero = Fr::ZERO;
+        let one = Fr::ONE;
+        let negone = zero - one;
+        let rand = Fr::random(&mut thread_rng());
+        let test_cases = vec![zero, one, negone, rand]; 
+        let v = FrVec(test_cases);
+        let s = bincode::serialize(&v).unwrap();
+        let d: FrVec = bincode::deserialize(&s).unwrap();
+        assert_eq!(v, d);
     }
 }

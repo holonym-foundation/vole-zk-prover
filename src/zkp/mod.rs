@@ -1,5 +1,4 @@
 use std::ops::Mul;
-
 use crate::{FrMatrix, Fr, FrVec, NUM_VOLES, SparseVec, SparseFrMatrix};
 
 #[derive(Clone)]
@@ -94,7 +93,7 @@ impl R1CSWithMetadata {
 }
 pub mod quicksilver {
     use std::time::Instant;
-
+    use serde::{Serialize, Deserialize};
     use anyhow::{Error, anyhow, bail, Ok};
     use ff::Field;
 
@@ -102,7 +101,7 @@ pub mod quicksilver {
 
     use super::{R1CS, R1CSWithMetadata};
 
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct ZKP {
         /// Quicksilver multiplication proof of two field elements
         pub mul_proof: (Fr, Fr),

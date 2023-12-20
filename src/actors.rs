@@ -1,11 +1,10 @@
 ///! Provides the prover and verifier structs
 pub mod actors {
     use std::time::Instant;
-
     use anyhow::{Error, anyhow, Ok};
     use ff::{PrimeField, Field};
     use rand::{rngs::ThreadRng, RngCore};
-
+    use serde::{Serialize, Deserialize};
     use crate::{subspacevole::{RAAACode, calc_consistency_check, LinearCode}, FrVec, FrMatrix, Fr, zkp::{R1CS, quicksilver::{ZKP, self}, R1CSWithMetadata}, vecccom::{expand_seed_to_Fr_vec, commit_seeds, commit_seed_commitments, proof_for_revealed_seed, reconstruct_commitment}, utils::{truncate_u8_32_to_254_bit_u64s_be, rejection_sample_u8s}, smallvole::{ProverSmallVOLEOutputs, self, DELTA_CHOICES, VOLE}, ScalarMul, challenges::{challenge_from_seed, calc_quicksilver_challenge, calc_other_challenges}, NUM_VOLES};
 
 
@@ -59,7 +58,7 @@ pub struct ProverCommitment {
     pub consistency_check: (FrVec, FrVec)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Proof {
     pub zkp: ZKP,
     // pub prover_commitment: ProverCommitment,
@@ -73,7 +72,7 @@ pub struct Proof {
     pub s_consistency_check: FrVec,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SubspaceVOLEOpening {
     /// Openings of one seed per pair
     pub seed_opens: Vec<[u8; 32]>,
@@ -327,7 +326,7 @@ impl Verifier {
 }
 
 /// Values of the witness that the prover opens
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublicOpenings {
     pub public_inputs: Vec<(Fr, Fr)>,
     pub public_outputs: Vec<(Fr, Fr)>

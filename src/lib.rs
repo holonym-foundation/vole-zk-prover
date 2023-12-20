@@ -15,6 +15,7 @@ use ff::Field;
 use nalgebra::{ClosedMul, SMatrix, DMatrix};
 use rand::rngs::ThreadRng;
 use subspacevole::RAAACode;
+use serde::{Serialize, Deserialize};
 // use subspacevole::{ElementaryColumnOp, ElementaryColumnOpComposition};
 // use num_traits::Zero;
 #[macro_use]
@@ -31,10 +32,10 @@ const NUM_VOLES: usize = 1024;
 #[PrimeFieldReprEndianness = "big"]
 pub struct Fr([u64; 4]);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrVec(pub Vec<Fr>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparseVec<T: Mul + Add>(pub Vec<(usize, T)>);
 
 /// Pretty display
@@ -196,7 +197,7 @@ impl FrVec {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrMatrix(pub Vec<FrVec>);
 impl FrMatrix {
     pub fn transpose(&self) -> Self {
