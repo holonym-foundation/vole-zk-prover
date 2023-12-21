@@ -5,16 +5,15 @@
 //! "The Serial Concatenation of Rate-1 Codes Through Uniform Random Interleavers" by Henry D. Pfister and Paul H. Siegel [year]
 //! "Coding Theorems for Turbo-Like Codes" by Divsalar [year]
 //! And a proof the security should be no lower when used prime-field inputs rather than binary-field inputs which may be found in the Holonym V2 whitepaper
-
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use nalgebra::{SMatrix, Const, Vector, SVector};
 use num_bigint::{BigInt, BigUint};
-use num_integer::{binomial, Integer};
 use num_traits::{FromPrimitive, ToPrimitive};
 
 /// Batch n-choose-k, exploting patterns in the binomial coefficient for efficient batch calcualtion in a particular range
 /// This only does it for square nxn matrices but coudlbe easily modified to suport abritrary matrix dimensions
-fn n_choose_k_square_matrix(n: usize) -> Vec<Vec<BigUint>>{
+pub fn n_choose_k_square_matrix(n: usize) -> Vec<Vec<BigUint>>{
     let mut init_row = vec![BigUint::from_u8(0).unwrap(); n+1];
     init_row[0] = BigUint::from_u8(1).unwrap();
     let mut output = vec![init_row; n+1];
@@ -28,54 +27,59 @@ fn n_choose_k_square_matrix(n: usize) -> Vec<Vec<BigUint>>{
     output
 }
 /// Calculates the Input Output Weight Enumeration for an accumulate code with input hamming weight w, output hamming weight h, and block size n
-pub fn calc_iowe_entry(input_hamming: usize, output_hamming: usize, block_size: usize) -> u128 {
-    if (output_hamming != 0) && (input_hamming == 0) { return 0 }
-    let w = BigInt::from_usize(input_hamming).unwrap();
-    let h = BigInt::from_usize(output_hamming).unwrap();
-    let n = BigInt::from_usize(block_size).unwrap();
+pub fn calc_iowe_entry(input_hamming: usize, output_hamming: usize, block_size: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> u128 {
+    if (input_hamming == 0) { 
+        return if (output_hamming == 0) { 1 } else { 0 }
+    } else if (output_hamming == 0) { 
+        return 0
+    }
+    let w = input_hamming; //BigInt::from_usize(input_hamming).unwrap();
+    let h = output_hamming; //BigInt::from_usize(output_hamming).unwrap();
+    let n = block_size; //BigInt::from_usize(block_size).unwrap();
+    // let two = BigInt::from_usize(2).unwrap();
 
-    let two = BigInt::from_usize(2).unwrap();
+    let lhs = &binomial_coeffs[n - &h][w.div_floor(2)]; // binomial(n - &h, w.div_floor(&two));
+    let rhs = &binomial_coeffs[h - 1][w.div_ceil(2) - 1]; // binomial(h - 1, w.div_ceil(&two) - 1);
 
-    let lhs = binomial(n - &h, w.div_floor(&two));
-    let rhs = binomial(h - 1, w.div_ceil(&two) - 1);
-
-    let out: BigInt = lhs * rhs;
+    let out: BigUint = lhs * rhs;
     out.to_u128().unwrap()
 }
 
 /// ESTIMATES MAY BE INACCURATE UNLESS f64 IS CHANGED TO A PRECISSE DECIMAL REPRESENTATION 
-pub fn calc_transition_prob(input_hamming: usize, output_hamming: usize, block_size: usize) -> f64 {
-   let iowe = calc_iowe_entry(input_hamming, output_hamming, block_size) as f64;
-   let w = BigInt::from_usize(input_hamming).unwrap();
-   let n = BigInt::from_usize(block_size).unwrap();
+pub fn calc_transition_prob(input_hamming: usize, output_hamming: usize, block_size: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> f64 {
+   let iowe = calc_iowe_entry(input_hamming, output_hamming, block_size, binomial_coeffs) as f64;
+   let w = input_hamming; // BigInt::from_usize(input_hamming).unwrap();
+   let n = block_size; // BigInt::from_usize(block_size).unwrap();
 
-   let denominator = binomial(n, w).to_u128().unwrap() as f64;
+   let denominator = binomial_coeffs[n][w].to_f64().unwrap();// binomial(n, w).to_u128().unwrap() as f64;
    iowe / denominator
 }
 
 /// Calculates column of IOWE matrix for the accumulate ode
-pub fn calc_iowe_column(output_hamming: usize, block_size: usize) -> Vec<u128> {
+pub fn calc_iowe_column(output_hamming: usize, block_size: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> Vec<u128> {
     (0..block_size+1).map(|ih|{
-        calc_iowe_entry(ih, output_hamming, block_size)
+        calc_iowe_entry(ih, output_hamming, block_size, binomial_coeffs)
     }).collect_vec()
 }
 
-pub fn calc_transition_prob_column(output_hamming: usize, block_size: usize) -> Vec<f64> {
+pub fn calc_transition_prob_column(output_hamming: usize, block_size: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> Vec<f64> {
     (0..block_size+1).map(|ih|{
-        calc_transition_prob(ih, output_hamming, block_size)
+        calc_transition_prob(ih, output_hamming, block_size, binomial_coeffs)
     }).collect_vec()
 }
 
 /// Calculates IOWE matrix in column-major order  for the accumulate ode
 pub fn calc_iowe_matrix(block_size: usize) -> Vec<Vec<u128>> {
+    let bcm = &n_choose_k_square_matrix(block_size);
     (0..block_size+1).map(|ih|{
-        calc_iowe_column(ih, block_size)
+        calc_iowe_column(ih, block_size, bcm)
     }).collect_vec()
 }
 
 pub fn calc_transition_prob_matrix(block_size: usize) -> Vec<Vec<f64>> {
+    let bcm = &n_choose_k_square_matrix(block_size);
     (0..block_size+1).map(|ih|{
-        calc_transition_prob_column(ih, block_size)
+        calc_transition_prob_column(ih, block_size, bcm)
     }).collect_vec()
 }
 
@@ -89,6 +93,8 @@ pub fn calc_transition_prob_matrix(block_size: usize) -> Vec<Vec<f64>> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use num_integer::binomial;
+
     #[test]
     fn iowe_matrix() {
         let m = calc_iowe_matrix(3);

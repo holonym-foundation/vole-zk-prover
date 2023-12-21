@@ -1,3 +1,4 @@
+#![feature(int_roundings)]
 pub mod circom;
 pub mod zkp;
 pub mod utils;
@@ -8,7 +9,8 @@ pub mod smallvole;
 pub mod vecccom;
 pub mod actors;
 pub mod format;
-mod codeparams;
+pub mod codeparams;
+
 use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::Output, fmt::Display};
 use wasm_bindgen::prelude::*;
 

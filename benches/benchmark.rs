@@ -3,7 +3,7 @@ use ff::{Field, PrimeField};
 use lazy_static::lazy_static;
 use nalgebra::SMatrix;
 use rand::{rngs::ThreadRng, Rng};
-use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode, FrMatrix, circom::{witness::wtns_from_reader, r1cs::R1CSFile}, actors::actors::Prover, zkp::R1CSWithMetadata, SparseVec};
+use volonym::{vecccom::expand_seed_to_Fr_vec, smallvole::{VOLE, TestMOLE}, Fr, FrRepr, FrVec, DotProduct, subspacevole::RAAACode, FrMatrix, circom::{witness::wtns_from_reader, r1cs::R1CSFile}, actors::actors::Prover, zkp::R1CSWithMetadata, SparseVec, codeparams::n_choose_k_square_matrix};
 use std::{fs::File, io::BufReader};
 
 lazy_static! {
@@ -104,9 +104,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     // // c.bench_function("1048576 random Frs", |b| b.iter(|| rand_fr_vec(black_box(20))));
     // group.bench_function("Sparse Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).sparse_dot(black_box(&sparse_vec))));
     // group.bench_function("Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).dot(black_box(&non_sparse_vec_2))));
-    group.bench_function("Load R1CS, Witness, and Create the VOLE in the Head Quicksilver proof", |b|b.iter(load_and_prove));
-
-
+    // group.bench_function("Load R1CS, Witness, and Create the VOLE in the Head Quicksilver proof", |b|b.iter(load_and_prove));
+    group.bench_function("Calculate 1024x1024 binomial coefficient (n choose k) mat", |b|b.iter(||n_choose_k_square_matrix(black_box(1024))));
+    
 
 }
 
