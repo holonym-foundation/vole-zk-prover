@@ -62,10 +62,11 @@ pub fn calc_iowe_column(output_hamming: usize, block_size: usize, binomial_coeff
     }).collect_vec()
 }
 
-pub fn calc_transition_prob_column(output_hamming: usize, block_size: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> Vec<f64> {
-    (0..block_size+1).map(|ih|{
+pub fn calc_transition_prob_column(output_hamming: usize, block_size: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> DecimalVec {
+    let v = (0..block_size+1).map(|ih|{
         calc_transition_prob(ih, output_hamming, block_size, binomial_coeffs)
-    }).collect_vec()
+    }).collect_vec();
+    DecimalVec(v)
 }
 
 /// Calculates IOWE matrix in column-major order  for the accumulate ode
@@ -76,11 +77,17 @@ pub fn calc_iowe_matrix(block_size: usize) -> Vec<Vec<u128>> {
     }).collect_vec()
 }
 
-pub fn calc_transition_prob_matrix(block_size: usize) -> Vec<Vec<f64>> {
+pub fn calc_transition_prob_matrix(block_size: usize) -> DecimalMatrix {
     let bcm = &n_choose_k_square_matrix(block_size);
-    (0..block_size+1).map(|ih|{
+    let m = (0..block_size+1).map(|ih|{
         calc_transition_prob_column(ih, block_size, bcm)
-    }).collect_vec()
+    }).collect_vec();
+    DecimalMatrix(m)
+}
+
+/// Calcualtes the transition probability
+pub fn calc_multi_transition_prob_matrix(block_size: usize, num_accumulators: usize) -> DecimalMatrix {
+    
 }
 
 #[derive(PartialEq, Debug)]
@@ -140,7 +147,15 @@ mod test {
     #[test]
     fn tprob_matrix() {
         let m = calc_transition_prob_matrix(3);
-        assert_eq!(m, vec![vec![1.0, 0.0, 0.0, 0.0], vec![0.0, 0.3333333333333333, 0.6666666666666666, 0.0], vec![0.0, 0.3333333333333333, 0.3333333333333333, 1.0], vec![0.0, 0.3333333333333333, 0.0, 0.0]]);
+        let ans = DecimalMatrix(
+            vec![
+                DecimalVec(vec![1.0, 0.0, 0.0, 0.0]), 
+                DecimalVec(vec![0.0, 0.3333333333333333, 0.6666666666666666, 0.0]), 
+                DecimalVec(vec![0.0, 0.3333333333333333, 0.3333333333333333, 1.0]), 
+                DecimalVec(vec![0.0, 0.3333333333333333, 0.0, 0.0])
+            ]
+        );
+        assert_eq!(m, ans);
     }
 
     #[test]
@@ -176,7 +191,7 @@ mod test {
             DecimalVec(vec![ 2.0, 30.0, 11.96969]),
 
         ]);
-        assert_eq!(a.mul(&b),c)
+        assert_eq!(a.mul(&b),c);
+        todo!("Test edge cases")
     }
-    
 }
