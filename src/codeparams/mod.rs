@@ -83,13 +83,43 @@ pub fn calc_transition_prob_matrix(block_size: usize) -> Vec<Vec<f64>> {
     }).collect_vec()
 }
 
-// pub fn multiple_acc_tprob_matrix<const BlockSize: usize>(n_acc: usize) -> SMatrix<f64, BlockSize, BlockSize> {
-//     let columns = calc_transition_prob_matrix(BlockSize).iter().map(|col|{
-//         SVector::from_vec(*col)
-//     }).collect_vec();
-//     let m = SMatrix::from_column_slice_generic(Const::<BlockSize>, Const::<BlockSize>, columns.as_slice());
-//     m
-// }
+#[derive(PartialEq, Debug)]
+pub struct DecimalVec(pub Vec<f64>);
+impl DecimalVec {
+    pub fn dot(&self, rhs: &Self) -> f64 {
+        self.0.iter().zip(rhs.0.iter()).map(|(a,b)| a*b).sum()
+    }
+}
+#[derive(PartialEq, Debug)]
+pub struct DecimalMatrix(pub Vec<DecimalVec>);
+impl DecimalMatrix {
+    pub fn mul(&self, rhs: &Self) -> Self {
+        let transposed = rhs.transpose();
+        let mut output_rows = Vec::with_capacity(self.0.len());
+        
+        for row in self.0.iter() {
+            output_rows.push(
+                DecimalVec(transposed.0.iter().map(|col|col.dot(row)).collect_vec())
+            );
+        }
+        Self(output_rows)
+    }
+    pub fn transpose(&self) -> Self {
+        let outer_len = self.0.len();
+        let inner_len  = self.0[0].0.len();
+        let mut res = Vec::with_capacity(inner_len);
+        
+        for i in 0..inner_len {
+            let mut new = Vec::with_capacity(outer_len);
+            for j in 0..outer_len {
+                new.push(self.0[j].0[i]);
+            }
+            res.push(DecimalVec(new));
+        }
+
+        Self(res)
+    }
+}
 #[cfg(test)]
 mod test {
     use super::*;
@@ -125,4 +155,28 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn matmul() {
+        let a = DecimalMatrix(vec![
+            DecimalVec(vec![ 1.0, 2.0, 3.0, 4.0, 5.0, 0.0 ]),
+            DecimalVec(vec![ 0.0, 2.0, 3.0, 0.0, 5.0, 1.0 ]),
+        ]);
+        let b = DecimalMatrix(vec![
+            DecimalVec(vec![ 1.0, 2.0, 3.0, ]),
+            DecimalVec(vec![ 0.0, 5.0, 0.0 ]),
+            DecimalVec(vec![ 0.0, 5.0, 0.0 ]),
+            DecimalVec(vec![ 0.0, 2.0, 0.0 ]),
+            DecimalVec(vec![ 0.0, 0.0, 1.0 ]),
+            DecimalVec(vec![ 2.0, 5.0, 6.96969 ]),
+        ]);
+
+        let c = DecimalMatrix(vec![
+            DecimalVec(vec![ 1.0, 35.0, 8.0 ]),
+            DecimalVec(vec![ 2.0, 30.0, 11.96969]),
+
+        ]);
+        assert_eq!(a.mul(&b),c)
+    }
+    
 }
