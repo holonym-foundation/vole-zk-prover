@@ -828,6 +828,7 @@ dependencies = [
  "ndarray",
  "nshare",
  "num-bigint 0.4.4",
+ "num-integer",
  "num-traits",
  "polynomen",
  "rand",

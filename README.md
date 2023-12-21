@@ -1,5 +1,5 @@
 # VOLE in the head aimed for compatability with popular DSLs
-This is an extremely fast NIZK prover capable of doing roughly one million constraints per second (benchmark pending after code is completed) on consumer hardware. It is not succinct. It uses the Quicksilver [] proving system with VOLE in the head [] as a linearly homorphic commitment scheme. It is optimized for the prime 21888242871839275222246405745257275088548364400416034343698204186575808495617 popular modern proving systems. We plan to support more finite fields.
+This is an extremely efficient NIZK prover. It is currently doing about 300k constraints per second on consumer hardware on a 254-bit field. There is a tradeoff in that is not succinct. It uses the Quicksilver [] proving system with VOLE in the head [] for the commitment scheme. It is optimized for the prime 21888242871839275222246405745257275088548364400416034343698204186575808495617 popular modern proving systems. We plan to support more finite fields.
 
 # How to use
 Supply R1CS and witness via CLI or wasm

@@ -8,6 +8,7 @@ pub mod smallvole;
 pub mod vecccom;
 pub mod actors;
 pub mod format;
+mod codeparams;
 use std::{ops::{Add, Mul, AddAssign, Neg, Sub, SubAssign, MulAssign}, process::Output, fmt::Display};
 use wasm_bindgen::prelude::*;
 
@@ -62,6 +63,7 @@ impl Mul for FrVec {
     }
 }
 
+// TODO: clean up this ridiculous math trait derivation :p
 
 impl<'a, 'b> Mul<&'b FrVec> for &'a FrVec {
     type Output = FrVec;
