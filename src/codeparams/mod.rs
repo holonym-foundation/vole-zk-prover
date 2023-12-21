@@ -70,34 +70,45 @@ pub fn calc_transition_prob_column(output_hamming: usize, block_size: usize, bin
 }
 
 /// Calculates IOWE matrix in column-major order  for the accumulate ode
-pub fn calc_iowe_matrix(block_size: usize) -> Vec<Vec<u128>> {
+pub fn calc_iowe_matrix_cols(block_size: usize) -> Vec<Vec<u128>> {
     let bcm = &n_choose_k_square_matrix(block_size);
     (0..block_size+1).map(|ih|{
         calc_iowe_column(ih, block_size, bcm)
     }).collect_vec()
 }
 
-pub fn calc_transition_prob_matrix(block_size: usize) -> DecimalMatrix {
+pub fn calc_transition_prob_matrix_cols(block_size: usize) -> DecimalMatrix {
     let bcm = &n_choose_k_square_matrix(block_size);
     let m = (0..block_size+1).map(|ih|{
         calc_transition_prob_column(ih, block_size, bcm)
     }).collect_vec();
     DecimalMatrix(m)
 }
+pub fn calc_transition_prob_matrix(block_size: usize) -> DecimalMatrix {
+    calc_transition_prob_matrix_cols(block_size).transpose()
+}
 
 /// Calcualtes the transition probability
 pub fn calc_multi_transition_prob_matrix(block_size: usize, num_accumulators: usize) -> DecimalMatrix {
-    
+    if num_accumulators < 1 { panic!("num_accumulators must be >= 1") }
+    let pm = calc_transition_prob_matrix(block_size);
+    let mut res = pm.clone();
+    for _i in (1..num_accumulators) {
+        res = res.mul(
+            &pm.clone()
+        );
+    }
+    res
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct DecimalVec(pub Vec<f64>);
 impl DecimalVec {
     pub fn dot(&self, rhs: &Self) -> f64 {
         self.0.iter().zip(rhs.0.iter()).map(|(a,b)| a*b).sum()
     }
 }
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 pub struct DecimalMatrix(pub Vec<DecimalVec>);
 impl DecimalMatrix {
     pub fn mul(&self, rhs: &Self) -> Self {
@@ -134,11 +145,11 @@ mod test {
 
     #[test]
     fn iowe_matrix() {
-        let m = calc_iowe_matrix(3);
+        let m = calc_iowe_matrix_cols(3);
         // println!("C is {:?}", m);
         assert_eq!(m, vec![vec![1, 0, 0, 0], vec![0, 1, 2, 0], vec![0, 1, 1, 1], vec![0, 1, 0, 0]]);
 
-        let c = calc_iowe_matrix(6);
+        let c = calc_iowe_matrix_cols(6);
         println!("c is {:?}", c);
 
         todo!("test against correct answer for c")
@@ -146,7 +157,7 @@ mod test {
 
     #[test]
     fn tprob_matrix() {
-        let m = calc_transition_prob_matrix(3);
+        let m = calc_transition_prob_matrix_cols(3);
         let ans = DecimalMatrix(
             vec![
                 DecimalVec(vec![1.0, 0.0, 0.0, 0.0]), 
@@ -193,5 +204,49 @@ mod test {
         ]);
         assert_eq!(a.mul(&b),c);
         todo!("Test edge cases")
+    }
+    #[test]
+    fn transpose() {
+        let x = DecimalMatrix(vec![
+            DecimalVec(vec![ 1.0, 3.0, 5.0 ]),
+            DecimalVec(vec![ 2.0, 4.0, 6.7]),
+
+        ]);
+        let y = DecimalMatrix(vec![
+            DecimalVec(vec![ 1.0, 2.0 ]),
+            DecimalVec(vec![ 3.0, 4.0 ]),
+            DecimalVec(vec![ 5.0, 6.7 ]),
+
+        ]);
+        assert_eq!(x, y.transpose());
+        assert_eq!(y, x.transpose());
+    }
+    #[test]
+    fn multiple_acc() {
+        let once = calc_multi_transition_prob_matrix(3, 1);
+        assert_eq!(
+            once, 
+            DecimalMatrix(
+                vec![
+                    DecimalVec(vec![1.0, 0.0, 0.0, 0.0]), 
+                    DecimalVec(vec![0.0, 0.3333333333333333, 0.3333333333333333, 0.3333333333333333]), 
+                    DecimalVec(vec![0.0, 0.6666666666666666, 0.3333333333333333, 0.0]), 
+                    DecimalVec(vec![0.0, 0.0, 1.0, 0.0])
+                ]
+            )
+        );
+
+        let twice = calc_multi_transition_prob_matrix(3, 2);
+        assert_eq!(
+            twice, 
+            DecimalMatrix(
+                vec![
+                    DecimalVec(vec![1.0, 0.0, 0.0, 0.0]), 
+                    DecimalVec(vec![0.0, 0.3333333333333333, 0.5555555555555556, 0.1111111111111111]), 
+                    DecimalVec(vec![0.0, 0.4444444444444444, 0.3333333333333333, 0.2222222222222222]), 
+                    DecimalVec(vec![0.0, 0.6666666666666666, 0.3333333333333333, 0.])
+                ]
+            )
+        );
     }
 }
