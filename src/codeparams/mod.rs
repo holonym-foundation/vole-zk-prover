@@ -129,6 +129,7 @@ pub fn calc_multi_transition_prob_matrix(block_size: usize, num_accumulators: us
 
 /// Calculates the expected value of number of outputs with hamming weight h of an RMA code with rate 1/`q`, block size `block_size`, and `num_accumulators` rate-1 accumulators preceded by rate-1 interleavers
 pub fn expected_num_outputs_with_weight(q: usize, block_size: usize, num_accumulators: usize, h: usize) -> BigDecimal {
+    assert!(h <= block_size, "it is not sensible to call for an output weight < the block size.");
     assert!(h > 0, "h must be > 0");
     assert!(block_size % q == 0, "block size must be divisible by q");
     let k = block_size / q;
@@ -139,6 +140,7 @@ pub fn expected_num_outputs_with_weight(q: usize, block_size: usize, num_accumul
     let pm = calc_multi_transition_prob_matrix(block_size, num_accumulators);
     let inner_cols = pm.transpose();
 
+    println!("dimensions: {:?} {:?}", (iowe_rep.0.len(), iowe_rep.0[0].0.len()), (inner_cols.0.len(), inner_cols.0[0].0.len()));
     let mut res: BigDecimal = BigDecimal::from(0);
     for i in 1..k+1 {
         // The expected number of outputs of Hamming weight h given input of Hamming weight i
@@ -163,8 +165,8 @@ pub fn max_prob_distance_lt(q: usize, block_size: usize, num_accumulators: usize
 
 /// Entry point
 pub fn main() {
-    let d = 80;
-    let (for_d, for_all_til_d) = max_prob_distance_lt(2, 64, 3, d);
+    let d = 100;
+    let (for_d, for_all_til_d) = max_prob_distance_lt(2, 256, 3, d);
     println!("prob of minimum distance under {} is at most {}", d, for_d);
     println!("prob of minimum distance under all numbers precenting {} are at most {:?}", d, for_all_til_d); 
 }

@@ -26,7 +26,7 @@ num-traits = "0.2.17"
 polynomen = "1.1.0"
 # polynomial = "0.2.6"
 rand = "0.8.5"
-serde = "1.0.193"
+serde ={ version = "1.0.193", features = ["derive"] }
 # scuttlebutt = { path = "./swanky/scuttlebutt" }
 wasm-bindgen = "0.2.89"
 
