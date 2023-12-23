@@ -1,4 +1,3 @@
-#![feature(int_roundings)]
 pub mod circom;
 pub mod zkp;
 pub mod utils;

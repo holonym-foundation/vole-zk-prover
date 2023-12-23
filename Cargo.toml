@@ -9,6 +9,7 @@ crate-type = ["lib", "cdylib"]
 
 [dependencies]
 anyhow = "1.0.75"
+bigdecimal = "0.4.2"
 bincode = "1.3.3"
 blake3 = "1.5.0"
 byteorder = "1.5.0"
@@ -35,3 +36,7 @@ criterion = { version = "0.4", default-features = false }
 [[bench]]
 name = "benchmark"
 harness = false
+
+[[bin]]
+name = "codeparams"
+path = "src/codeparams/mod.rs"
