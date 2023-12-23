@@ -6,7 +6,8 @@
 //! "Coding Theorems for Turbo-Like Codes" by Divsalar [year]
 //! And a proof the security should be no lower when used prime-field inputs rather than binary-field inputs which may be found in the Holonym V2 whitepaper
 
-use std::str::FromStr;
+use std::{str::FromStr, fmt::Debug};
+use ff::derive::rand_core::block;
 use itertools::Itertools;
 use bigdecimal::BigDecimal;
 use nalgebra::{SMatrix, Const, Vector, SVector};
@@ -18,6 +19,8 @@ use num_traits::{FromPrimitive, ToPrimitive};
 pub fn repeat_iowe(block_size: usize, q: usize, binomial_coeffs: &Vec<Vec<BigUint>>) -> DecimalMatrix{
     let l = block_size+1;
     assert_eq!(block_size % q, 0, "block_size must be divisible by q");
+    let k = block_size / q;
+
     let mut rows = Vec::with_capacity(l);
     
     for w in 0..l {
@@ -25,7 +28,7 @@ pub fn repeat_iowe(block_size: usize, q: usize, binomial_coeffs: &Vec<Vec<BigUin
 
         for h in 0..l {
             if q * w == h {
-                row.push(BigDecimal::from_str(&binomial_coeffs[block_size][w].to_string()).unwrap());
+                row.push(BigDecimal::from_str(&binomial_coeffs[k][w].to_string()).unwrap());
             } else {
                 row.push(BigDecimal::from(0));
             }
@@ -127,24 +130,28 @@ pub fn calc_multi_transition_prob_matrix(block_size: usize, num_accumulators: us
     res
 }
 
-/// Calculates the expected value of number of outputs with hamming weight h of an RMA code with rate 1/`q`, block size `block_size`, and `num_accumulators` rate-1 accumulators preceded by rate-1 interleavers
-pub fn expected_num_outputs_with_weight(q: usize, block_size: usize, num_accumulators: usize, h: usize) -> BigDecimal {
-    assert!(h <= block_size, "it is not sensible to call for an output weight < the block size.");
-    assert!(h > 0, "h must be > 0");
+/// Returns code's input length (`k`), the IOWE matrix of the repetition code, and input-output Hamming weight transition probability matrix after `num_accumulators` rate-1 accumulators with block size `block_size`, each preceded by uniform interleaver
+/// The code's value `q` is 1/rate
+pub fn values_for_rma_code(q: usize, block_size: usize, num_accumulators: usize) -> (usize, DecimalMatrix, DecimalMatrix) {
     assert!(block_size % q == 0, "block size must be divisible by q");
-    let k = block_size / q;
 
     let bcm = &n_choose_k_square_matrix(block_size);
     let iowe_rep = repeat_iowe(block_size, q, &bcm);
-    let outer_cols = iowe_rep.transpose();
     let pm = calc_multi_transition_prob_matrix(block_size, num_accumulators);
-    let inner_cols = pm.transpose();
 
-    println!("dimensions: {:?} {:?}", (iowe_rep.0.len(), iowe_rep.0[0].0.len()), (inner_cols.0.len(), inner_cols.0[0].0.len()));
+    (block_size / q, iowe_rep, pm)
+}
+/// Calculates the expected value of number of outputs of concatenated outer code with input length `k` and IOWE `outer_iowe`, with an inner code of input-output weight transition probability matrix of `inner_transition_prob`
+pub fn expected_num_outputs_with_weight(k: usize, outer_iowe: &DecimalMatrix, inner_transition_prob: &DecimalMatrix, h: usize) -> BigDecimal {
+    assert!(h < outer_iowe.0.len(), "it is not sensible to call for an output weight < the block size.");
+    assert!(h > 0, "h must be > 0");
+    
+    let inner_cols = inner_transition_prob.transpose();
+    println!("dimensions: {:?} {:?}", (outer_iowe.0.len(), outer_iowe.0[0].0.len()), (inner_cols.0.len(), inner_cols.0[0].0.len()));
     let mut res: BigDecimal = BigDecimal::from(0);
     for i in 1..k+1 {
         // The expected number of outputs of Hamming weight h given input of Hamming weight i
-        let for_input_weight_i = iowe_rep.0[i].dot(&inner_cols.0[h]);
+        let for_input_weight_i = outer_iowe.0[i].dot(&inner_cols.0[h]);
         res += for_input_weight_i;
     }
     res
@@ -155,8 +162,11 @@ pub fn expected_num_outputs_with_weight(q: usize, block_size: usize, num_accumul
 pub fn max_prob_distance_lt(q: usize, block_size: usize, num_accumulators: usize, d: usize) -> (BigDecimal, Vec<BigDecimal>) {
     let mut upper_bounds = Vec::<BigDecimal>::with_capacity(d-1);
     let mut upper_bound_d = BigDecimal::from(0);
+    let (k, inner_iowe, outper_tp) = values_for_rma_code(q, block_size, num_accumulators);
+    println!("inner iowe {}", inner_iowe);
+    println!("outer_tp {}", outper_tp);
     for i in 1..d {
-        let a_h = expected_num_outputs_with_weight(q, block_size, num_accumulators, i);
+        let a_h = expected_num_outputs_with_weight(k, &inner_iowe, &outper_tp, i);
         upper_bound_d += a_h;
         upper_bounds.push(upper_bound_d.clone());
     }
@@ -166,9 +176,9 @@ pub fn max_prob_distance_lt(q: usize, block_size: usize, num_accumulators: usize
 /// Entry point
 pub fn main() {
     let d = 100;
-    let (for_d, for_all_til_d) = max_prob_distance_lt(2, 256, 3, d);
+    let (for_d, for_all_til_d) = max_prob_distance_lt(4, 256, 3, d);
     println!("prob of minimum distance under {} is at most {}", d, for_d);
-    println!("prob of minimum distance under all numbers precenting {} are at most {:?}", d, for_all_til_d); 
+    println!("prob of minimum distance under all numbers precenting {} are at most {}", d, DecimalVec(for_all_til_d)); 
 }
 #[derive(PartialEq, Debug, Clone)]
 pub struct DecimalVec(pub Vec<BigDecimal>);
@@ -181,6 +191,14 @@ impl DecimalVec {
     }
     pub fn is_close_to(&self, rhs: &Self, tol: f64) -> bool {
         self.0.iter().zip(rhs.0.iter()).all(|(a,b)| (a-b).abs() < BigDecimal::from_f64(tol).unwrap())
+    }
+}
+impl std::fmt::Display for DecimalVec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut string = String::from("");
+        string.push_str("[ ");
+        self.0.iter().for_each(|d|{ string.push_str(&d.round(8).to_string()); string.push_str(", ") });
+        write!(f, "{}", string)
     }
 }
 #[derive(PartialEq, Debug, Clone)]
@@ -214,6 +232,16 @@ impl DecimalMatrix {
     }
     pub fn is_close_to(&self, rhs: &Self, tol: f64) -> bool {
         self.0.iter().zip(rhs.0.iter()).all(|(a,b)| a.is_close_to(b, tol))
+    }
+}
+
+impl std::fmt::Display for DecimalMatrix {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut string = String::from("");
+        string.push_str("[\n\t");
+        self.0.iter().for_each(|d|{ string.push_str(&d.to_string()); string.push_str("]\n\t") });
+        string.push_str("\n]");
+        write!(f, "{}", string)
     }
 }
 #[cfg(test)]
