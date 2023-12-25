@@ -1,6 +1,6 @@
 ///! Provides the prover and verifier structs
 pub mod actors {
-    use std::time::Instant;
+    // use std::time::Instant;
     use anyhow::{Error, anyhow, Ok};
     use ff::{PrimeField, Field};
     use rand::{rngs::ThreadRng, RngCore};
@@ -199,29 +199,29 @@ impl Prover {
 
     /// Wrapper for all other prover functions
     pub fn prove(&mut self) -> Result<Proof, Error> {
-        let mut start = Instant::now();
+        // let mut start = Instant::now();
         let err_uncompleted = ||anyhow!("VOLE must be completed before this step");
         let svs = self.subspace_vole_secrets.as_ref().ok_or(err_uncompleted())?;
         let seed_comm = self.seed_commitment.as_ref().ok_or(err_uncompleted())?;
         let witness_comm = self.witness_comm.as_ref().ok_or(err_uncompleted())?;
 
-        println!("Commited {}", start.elapsed().as_micros()); start = Instant::now();
+        // println!("Commited {}", start.elapsed().as_micros()); start = Instant::now();
         // TODO: without so much cloning
         let prover = quicksilver::Prover::from_vith(svs.u1.clone(), svs.u2.clone(), self.witness.clone(), self.circuit.clone());
         
-        println!("made prover from VitH {}", start.elapsed().as_micros()); start = Instant::now();
+        // println!("made prover from VitH {}", start.elapsed().as_micros()); start = Instant::now();
 
         let challenge = calc_quicksilver_challenge(seed_comm, &witness_comm);
         let zkp = prover.prove(&challenge); 
 
-        println!("made proof {}", start.elapsed().as_micros()); start = Instant::now();
+        // println!("made proof {}", start.elapsed().as_micros()); start = Instant::now();
 
         let public_openings = PublicOpenings {
             public_inputs: prover.open_public(&self.circuit.public_inputs_indices),
             public_outputs: prover.open_public(&self.circuit.public_outputs_indices)
         };
 
-        println!("made public openings {}", start.elapsed().as_micros()); start = Instant::now();
+        // println!("made public openings {}", start.elapsed().as_micros()); start = Instant::now();
 
         
         let challenges = calc_other_challenges(seed_comm, witness_comm, &zkp, self.vole_length, self.num_voles, &public_openings);
@@ -236,7 +236,7 @@ impl Prover {
                 proof_for_revealed_seed(&svs.seeds[i][1 - challenges.delta_choices[i]])
             );
         };
-        println!("challenges, consistency check, opening proofs: {}", start.elapsed().as_micros()); start = Instant::now();
+        // println!("challenges, consistency check, opening proofs: {}", start.elapsed().as_micros()); start = Instant::now();
 
 
         Ok(
