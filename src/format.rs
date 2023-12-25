@@ -1,13 +1,4 @@
-//! Reads and write proof formats. Proof formats are JSON strings with certain large entries serialized in a more efficient way
-//! All field elements are converted to their byte representations until everything is in byte representation.
-//! {
-//!     "ZKP" : {"mulProof", [FR_BE_REPR(u), FR_BE_REPR(v)]},
-//!     "seedOpenings": {"seedOpens": seedOpens, "seedProofs": seedProofs}
-//!     "publicOpenings" : {"publicInputs": [...[FR_BE_REPR(pi_i.u), FR_BE_REPR(pi_i.v)]], "publicOutputs": [...[FR_BE_REPR(po_i.u), FR_BE_REPR(po_i.v)]] }
-//! }
-//! where FR_BE_REPR(f) serializes an element f of a finite field by giving its big-endian byte-representation
-//! CONCAT_U32s
-
+//! Reads and write proof formats.
 use crate::{actors::actors::Proof, Fr, FrRepr};
 use ff::PrimeField;
 use serde::{ser::{Serialize, Serializer, SerializeStruct}, de::{Deserialize, Visitor, Expected}};
