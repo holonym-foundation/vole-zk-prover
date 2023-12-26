@@ -221,7 +221,7 @@ impl FrMatrix {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparseFrMatrix(pub Vec<SparseVec<Fr>>);
 
 

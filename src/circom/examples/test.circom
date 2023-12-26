@@ -46,4 +46,4 @@ template TestCircuit(Sha256IterationsMinusOne) {
    // c[2] <== a[3] * b[2] + b[3];
 }
 
-component main { public [publicInput, anotherPublicInput] } = TestCircuit(2);
+component main { public [publicInput, anotherPublicInput] } = TestCircuit(9);

@@ -1,25 +1,26 @@
 use std::ops::Mul;
+use blake3::hash;
+use serde::{Serialize, Deserialize};
 use crate::{FrMatrix, Fr, FrVec, NUM_VOLES, SparseVec, SparseFrMatrix};
-
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FullR1CS {
     pub a_rows: FrMatrix,
     pub b_rows: FrMatrix,
     pub c_rows: FrMatrix,
 }
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SparseR1CS {
     pub a_rows: SparseFrMatrix,
     pub b_rows: SparseFrMatrix,
     pub c_rows: SparseFrMatrix
 }
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum R1CS {
     Sparse(SparseR1CS),
     Full(FullR1CS)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct R1CSWithMetadata {
     pub r1cs: R1CS,
     pub public_inputs_indices: Vec<usize>,
@@ -36,7 +37,6 @@ pub struct PadParams {
     pub num_padded_wtns_rows: usize
 }
 impl R1CS {
-    
     /// Returns Av, Bv, Cv for a vector v
     fn vec_mul(&self, v: &FrVec) -> (FrVec, FrVec, FrVec) {
         match self {
@@ -89,6 +89,11 @@ impl R1CSWithMetadata {
             pad_len,
             num_padded_wtns_rows,
         }
+    }
+    pub fn circuit_id(&self) -> Result<[u8; 32], anyhow::Error> {
+        let serialized = bincode::serialize(&self)?;
+        let hashed = blake3::hash(&serialized);
+        Ok(*hashed.as_bytes())
     }
 }
 pub mod quicksilver {

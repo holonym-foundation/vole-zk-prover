@@ -106,8 +106,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).dot(black_box(&non_sparse_vec_2))));
     // group.bench_function("Load R1CS, Witness, and Create the VOLE in the Head Quicksilver proof", |b|b.iter(load_and_prove));
     // group.bench_function("Calculate 1024x1024 binomial coefficient (n choose k) mat", |b|b.iter(||n_choose_k_square_matrix(black_box(1024))));
-    group.bench_function("Calculate 1024x1024 3x probability matrix", |b|b.iter(||calc_multi_transition_prob_matrix(64, 3)));
-
+    // group.bench_function("Calculate 1024x1024 3x probability matrix", |b|b.iter(||calc_multi_transition_prob_matrix(64, 3)));
+    group.bench_function("Calculate circuit id", |b|b.iter(||{ let c = black_box(&*CIRCUIT); c.circuit_id().unwrap() }));
     
 
 }
