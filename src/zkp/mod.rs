@@ -97,10 +97,11 @@ impl R1CSWithMetadata {
     }
 }
 pub mod quicksilver {
+    use itertools::Itertools;
     // use std::time::Instant;
     use serde::{Serialize, Deserialize};
     use anyhow::{Error, anyhow, bail, Ok};
-    use ff::Field;
+    use ff::{Field, PrimeField};
 
     use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul, actors::actors::PublicOpenings};
 

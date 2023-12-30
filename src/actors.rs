@@ -285,7 +285,7 @@ impl Verifier {
     }
 
     /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
-    pub fn verify(&self, cnp: &CommitAndProof) -> Result<PublicOpenings, Error> {
+    pub fn verify(&self, cnp: &CommitAndProof) -> Result<PublicUOpenings, Error> {
         let comm = &cnp.commitment;
         let proof = &cnp.proof;
         let challenges = calc_other_challenges(&comm.seed_comm, &comm.witness_comm, &proof.zkp, self.vole_length, self.num_voles, &proof.public_openings);
@@ -335,7 +335,9 @@ impl Verifier {
         let quicksilver_challenge = calc_quicksilver_challenge(&comm.seed_comm, &comm.witness_comm);
         zk_verifier.verify(&quicksilver_challenge, &proof.zkp)?;
         zk_verifier.verify_public(&proof.public_openings)?;
-        Ok(proof.public_openings.clone())
+
+        // Return the witness (u) values from the public openings (v isn't useful as a public value except for verifiying the proof)
+        Ok(proof.public_openings.u_values())
     }
 
     
@@ -348,6 +350,22 @@ pub struct PublicOpenings {
     pub public_outputs: Vec<(Fr, Fr)>
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublicUOpenings {
+    pub public_inputs: Vec<Fr>,
+    pub public_outputs: Vec<Fr>
+}
+impl PublicOpenings {
+    pub fn u_values(&self) -> PublicUOpenings {
+        PublicUOpenings {
+            public_inputs: self.public_inputs.iter().map(|(x, _)|x.clone()).collect(),
+            public_outputs: self.public_outputs.iter().map(|(x, _)|x.clone()).collect()
+        }
+    }
+}
+
+
+
 }
 
 pub mod test_helpers {
@@ -355,9 +373,9 @@ pub mod test_helpers {
 
     use crate::{FrVec, zkp::R1CSWithMetadata};
 
-    use super::actors::{Prover, PublicOpenings, Verifier};
+    use super::actors::{Prover, Verifier, PublicUOpenings};
 
-    pub fn e2e_test(witness: FrVec, circuit: R1CSWithMetadata) -> Result<PublicOpenings, Error>{
+    pub fn e2e_test(witness: FrVec, circuit: R1CSWithMetadata) -> Result<PublicUOpenings, Error>{
         let mut prover = Prover::from_witness_and_circuit_unpadded(witness.clone(), circuit.clone());
         // let vole_comm = prover.mkvole().unwrap();
         // let proof = prover.prove().unwrap();
