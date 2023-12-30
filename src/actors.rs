@@ -47,6 +47,8 @@ pub struct SubspaceVOLESecrets {
     /// Second half of v1_s rows
     v2: FrMatrix
 }
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct ProverCommitment {
     /// Hash of every pair of seed's respective hashes for the seeds used to create the VOLEs. We are just using two seeds per VOLE!
     /// Can/should be used for Fiat-Shamir of subspace VOLE consistency check
@@ -70,6 +72,12 @@ pub struct Proof {
     pub s_matrix: FrMatrix,
     /// Proof S was constructed correctly
     pub s_consistency_check: FrVec,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CommitAndProof {
+    pub commitment: ProverCommitment,
+    pub proof: Proof
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -250,6 +258,12 @@ impl Prover {
         )
     }
 
+    pub fn commit_and_prove(&mut self) -> Result<CommitAndProof, Error> {
+        let commitment = self.mkvole()?;
+        let proof = self.prove()?;
+        Ok(CommitAndProof { commitment, proof })
+    }
+
 }
 
 impl Verifier {
@@ -261,8 +275,8 @@ impl Verifier {
         Verifier { 
             circuit, 
             num_voles: code.n(), 
-            /// One extra row for the hiding of the linear combination of the relevant values in the consistency check
-            /// 2x extra rows to convert subsapce VOLE into VitH. Overall, we require 2 * `num_padded_witness_rows` + 2 rows
+            // One extra row for the hiding of the linear combination of the relevant values in the consistency check
+            // 2x extra rows to convert subsapce VOLE into VitH. Overall, we require 2 * `num_padded_witness_rows` + 2 rows
             vole_length: 2 * (pp.num_padded_wtns_rows + 1),
             code, 
             subspace_vole_deltas: None, 
@@ -271,7 +285,9 @@ impl Verifier {
     }
 
     /// TODO: ensure every value in the ProverCommitment and Proof is checked in some way by this function:
-    pub fn verify(&self, comm: &ProverCommitment, proof: &Proof) -> Result<PublicOpenings, Error> {
+    pub fn verify(&self, cnp: &CommitAndProof) -> Result<PublicOpenings, Error> {
+        let comm = &cnp.commitment;
+        let proof = &cnp.proof;
         let challenges = calc_other_challenges(&comm.seed_comm, &comm.witness_comm, &proof.zkp, self.vole_length, self.num_voles, &proof.public_openings);
         let mut deltas = Vec::<Fr>::with_capacity(self.num_voles);
         let mut q_cols = Vec::<FrVec>::with_capacity(self.num_voles);
@@ -343,18 +359,18 @@ pub mod test_helpers {
 
     pub fn e2e_test(witness: FrVec, circuit: R1CSWithMetadata) -> Result<PublicOpenings, Error>{
         let mut prover = Prover::from_witness_and_circuit_unpadded(witness.clone(), circuit.clone());
-        let vole_comm = prover.mkvole().unwrap();
-        let proof = prover.prove().unwrap();
-
+        // let vole_comm = prover.mkvole().unwrap();
+        // let proof = prover.prove().unwrap();
+        let cnp = prover.commit_and_prove().unwrap();
         let verifier = Verifier::from_circuit(circuit);
-        verifier.verify(&vole_comm, &proof)
+        verifier.verify(&cnp)
     }
 }
 #[cfg(test)]
 mod test {
     use anyhow::anyhow;
     use ff::{PrimeField, Field};
-    use crate::{subspacevole::RAAACode, zkp::{self, R1CSWithMetadata}, actors::{actors::{Prover, Verifier}, test_helpers::e2e_test}, Fr, FrVec, circom::witness};
+    use crate::{subspacevole::RAAACode, zkp::{self, R1CSWithMetadata}, actors::{actors::{Prover, Verifier, CommitAndProof}, test_helpers::e2e_test}, Fr, FrVec, circom::witness};
     use super::*;
 
     
@@ -391,31 +407,31 @@ mod test {
         let correct_proof = prover.prove().unwrap();
 
         let verifier = Verifier::from_circuit(circuit);
-        assert!(verifier.verify(&vole_comm, &correct_proof).is_ok());
+        assert!(verifier.verify(&CommitAndProof { commitment: vole_comm.clone(), proof: correct_proof.clone() }).is_ok());
         
         // Test every value in this small array of public values is accounted for (assuming it is constrained)
         for i in 0..correct_proof.public_openings.public_inputs.len() {
             let mut incorrect_proof = correct_proof.clone();
             
             incorrect_proof.public_openings.public_inputs[i].0 += Fr::ONE;
-            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+            assert!(verifier.verify(&CommitAndProof { commitment: vole_comm.clone(), proof: incorrect_proof.clone() }).is_err());
             
             incorrect_proof = correct_proof.clone();
 
             incorrect_proof.public_openings.public_inputs[i].1 += Fr::ONE;
-            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+            assert!(verifier.verify(&CommitAndProof { commitment: vole_comm.clone(), proof: incorrect_proof.clone() }).is_err());
         }
         // Test every value in this small array of public values is accounted for (assuming it is constrained)
         for i in 0..correct_proof.public_openings.public_outputs.len() {
             let mut incorrect_proof = correct_proof.clone();
             
             incorrect_proof.public_openings.public_outputs[i].0 += Fr::ONE;
-            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+            assert!(verifier.verify(&CommitAndProof { commitment: vole_comm.clone(), proof: incorrect_proof.clone() }).is_err());
 
             incorrect_proof = correct_proof.clone();
 
             incorrect_proof.public_openings.public_outputs[i].0 += Fr::ONE;
-            assert!(verifier.verify(&vole_comm, &incorrect_proof).is_err());
+            assert!(verifier.verify(&CommitAndProof { commitment: vole_comm.clone(), proof: incorrect_proof.clone() }).is_err());
         }
     }
 }
