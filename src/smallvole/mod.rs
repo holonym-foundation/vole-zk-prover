@@ -12,7 +12,7 @@ lazy_static! {
     pub static ref DELTA_CHOICES: [Fr; 2] = {
         let mut first_digest = *blake3::hash("First ∆".as_bytes()).as_bytes();
         let mut second_digest = *blake3::hash("Second ∆".as_bytes()).as_bytes();
-        [rejection_sample_u8s(&first_digest), rejection_sample_u8s(&first_digest)]
+        [rejection_sample_u8s(&first_digest), rejection_sample_u8s(&second_digest)]
     };
 }
 pub struct ProverSmallVOLEOutputs { 

@@ -2,7 +2,8 @@ use std::{usize, result};
 use anyhow::{Error, anyhow};
 use num_traits::ToBytes;
 use rand::{Rng, SeedableRng};
-use rand::rngs::{ThreadRng, StdRng};
+use rand::rngs::{ThreadRng};
+use rand_chacha::ChaCha20Rng;
 use crate::{Fr, FrVec, FrMatrix, NUM_VOLES};
 use crate::ff::Field;
 
@@ -66,12 +67,13 @@ pub trait LinearCode {
             x * deltas
             //x.0.iter().zip(deltas.0.iter()).map(|(a, b)| a * b)
         }).collect::<Vec<FrVec>>();
+        
         FrMatrix(
             old_qs.0.iter().zip(&times_deltas).map(|(q, t)|q - t).collect()
         )
     }
     /// `challenge_hash`` is the universal hash 
-    /// `consistency_check` is the value returned frmo `calc_consistency_check`
+    /// `consistency_check` is the value returned from `calc_consistency_check`
     /// `deltas` and `q` are the verifier's deltas and q
     /// encoder
     /// TODO: generics instead of RAAACode. And ofc generics for field
@@ -96,7 +98,7 @@ pub trait LinearCode {
 pub struct RAAACode {
     /// Forward and reverse permutations required for interleave and inverting interleave each time
     /// In order of when the interleaves are applied (e.g. 0th is after repetition and 2nd is before final accumulation)
-    pub permutations: [(Vec<usize>, Vec<usize>); 3],
+    pub permutations: [(Vec<u32>, Vec<u32>); 3],
     /// Codeword length over dimension (rate's inverse). Default 2
     /// Exercise caution when changing q as this will affect the minimum distance and therefore security. Default q was selected for roughtly 128 bits of security at block length Fr,
     /// But THIS SECURITY CALCULATION WAS NOT DONE EXTREMELY RIGOROUSLY, rather by glancing at charts on "Coding Theorems for Repeat Multiple
@@ -213,12 +215,12 @@ impl RAAACode {
 
     /// Permutation is not checked to be uniform. It simply contains a vec of new indices
     /// Interleave inverse is just interleave with the inverse of `permutation`
-    pub fn interleave(input: &FrVec, permutation: &Vec<usize>) -> FrVec {
+    pub fn interleave(input: &FrVec, permutation: &Vec<u32>) -> FrVec {
         let len = input.0.len();
         assert!(len == permutation.len(), "input length {} must match number of swaps {}", len, permutation.len());
         let mut out = vec![Fr::ZERO; len];
         for i in 0..len {
-            out[permutation[i]] = input.0[i];
+            out[permutation[i] as usize] = input.0[i];
         }
         FrVec(out)
     }
@@ -245,21 +247,32 @@ impl RAAACode {
     }
     /// Returns a uniform permutation and its inverse
     /// It will be deterministic if and only if a seed is provided
-    pub fn random_interleave_permutations(len: usize, seed: Option<[u8; 32]>) -> (Vec<usize>, Vec<usize>) {
+    pub fn random_interleave_permutations(len: u32, seed: Option<[u8; 32]>) -> (Vec<u32>, Vec<u32>) {
         let range = 0..len;
         let mut rng = match seed { 
-            Some(s) => StdRng::from_seed(s),
-            None => StdRng::from_rng(&mut rand::thread_rng()).unwrap()
+            Some(s) => ChaCha20Rng::from_seed(s),
+            None => ChaCha20Rng::from_rng(&mut rand::thread_rng()).unwrap()
         };
         // let mut rng = ThreadRng::default();
-        let mut forward = Vec::with_capacity(len);
-        let mut backward = vec![0; len];
-        let mut avail_indices = range.clone().collect::<Vec<usize>>();
+        let mut forward = Vec::with_capacity(len as usize);
+        let mut backward = vec![0; len as usize];
+        let mut avail_indices = range.clone().collect::<Vec<u32>>();
+
+        // Remove one index at a time from the available indices. Its length decreases each time
+        // While this would be more readable within the for loop below it, there is a strangel wasm compatbility issue
+        // from putting it there the way I did, resulting in wasm and native compiled versions having different permutations from the same seed...
+        // Perhaps there is another way to put it within the loop, but this is still somewhat readable at least!
+        let mut remove_indices = (1..len+1).map(|i|
+            rng.gen_range(0..i)
+        ).collect::<Vec<u32>>();
+        remove_indices.reverse();
+
         for i in range {
-            let remove_idx = rng.gen_range(0..avail_indices.len());
-            let removed_value = avail_indices.swap_remove(remove_idx);
+            // The old way of removing and index that doesn't give the same result when compiled to wasm
+            // let remove_idx = rng.gen_range(0..avail_indices.len());
+            let removed_value = avail_indices.remove(remove_indices[i as usize] as usize);
             forward.push(removed_value);
-            backward[removed_value] = i;
+            backward[removed_value as usize] = i;
         }
         (forward, backward)
     }
@@ -280,7 +293,7 @@ impl RAAACode {
         RAAACode { permutations, q: 2 }
     }
     /// For testing. Note that block size under roughly 1024 for current code may not give 128 bits of security
-    pub fn rand_with_parameters(block_size: usize, q: usize) -> Self {
+    pub fn rand_with_parameters(block_size: u32, q: usize) -> Self {
         let permutations = [
             RAAACode::random_interleave_permutations(block_size, None),
             RAAACode::random_interleave_permutations(block_size, None),
@@ -288,75 +301,75 @@ impl RAAACode {
         ];
         RAAACode { permutations, q }
     }
-    /// Returns an array of u8s. Every four u8s represents a little-endian value. While these values are usizes for indexing, they should be small.
-    /// If a usize go beyond the max u32 value, this returns an error.
-    /// Codes should not be so large that they overflow a u32 so it is unlikely this will return an error.
-    /// The four-byte chunks are as follows
-    /// 0th: Number of repetitions for the repetition code, i.e. the code's `q` parameter
-    /// 1st: Number of interleave*accumulates. For the foreseeable future 3 seems optimal and this is fixed at 3.
-    /// 2nd: Length of codewords, i.e. the code's `n`
-    /// [3rd , `n`+3rd): The first interleave permutation
-    /// [`n`+3rd, `2n`+3rd): The first interleave permutation's inverse
-    /// [2`n`+3rd , 3`n`+3rd): The second interleave permutation
-    /// [3`n`+3rd , 4`n`+3rd): The second interleave permutation's inverse
-    /// [4`n`+3rd , 5`n`+3rd): The third interleave permutation
-    /// [5`n`+3rd , 6`n`+3rd): The third interleave permutation's inverse
-    pub fn serialize(&self) -> Result<Vec<u8>, Error> {
-        let mut usizes: Vec<usize> = Vec::with_capacity(
-            3 + self.permutations[0].0.len() * 2 * self.permutations.len()
-        );
+    // /// Returns an array of u8s. Every four u8s represents a little-endian value. While these values are usizes for indexing, they should be small.
+    // /// If a usize go beyond the max u32 value, this returns an error.
+    // /// Codes should not be so large that they overflow a u32 so it is unlikely this will return an error.
+    // /// The four-byte chunks are as follows
+    // /// 0th: Number of repetitions for the repetition code, i.e. the code's `q` parameter
+    // /// 1st: Number of interleave*accumulates. For the foreseeable future 3 seems optimal and this is fixed at 3.
+    // /// 2nd: Length of codewords, i.e. the code's `n`
+    // /// [3rd , `n`+3rd): The first interleave permutation
+    // /// [`n`+3rd, `2n`+3rd): The first interleave permutation's inverse
+    // /// [2`n`+3rd , 3`n`+3rd): The second interleave permutation
+    // /// [3`n`+3rd , 4`n`+3rd): The second interleave permutation's inverse
+    // /// [4`n`+3rd , 5`n`+3rd): The third interleave permutation
+    // /// [5`n`+3rd , 6`n`+3rd): The third interleave permutation's inverse
+    // pub fn serialize(&self) -> Result<Vec<u8>, Error> {
+    //     let mut usizes: Vec<usize> = Vec::with_capacity(
+    //         3 + self.permutations[0].0.len() * 2 * self.permutations.len()
+    //     );
 
-        usizes.push(self.q.clone());
-        usizes.push(self.permutations.len());
-        usizes.push(self.permutations[0].0.len());
-        self.permutations.iter().for_each(|x|{
-            usizes.append(&mut x.0.clone());
-            usizes.append(&mut x.1.clone());
-        });
+    //     usizes.push(self.q.clone());
+    //     usizes.push(self.permutations.len());
+    //     usizes.push(self.permutations[0].0.len());
+    //     self.permutations.iter().for_each(|x|{
+    //         usizes.append(&mut x.0.clone());
+    //         usizes.append(&mut x.1.clone());
+    //     });
 
-        if !usizes.iter().all(|u| *u <= u32::MAX as usize) {
-            return Err(anyhow!("overflow"))
-        }
+    //     if !usizes.iter().all(|u| *u <= u32::MAX as usize) {
+    //         return Err(anyhow!("overflow"))
+    //     }
 
-        let mut u8s: Vec<u8> = Vec::with_capacity(usizes.len()*4);
+    //     let mut u8s: Vec<u8> = Vec::with_capacity(usizes.len()*4);
 
-        usizes.iter().for_each(|u|{
-            u8s.append(&mut u.to_le_bytes()[0..4].to_vec())
-        });
+    //     usizes.iter().for_each(|u|{
+    //         u8s.append(&mut u.to_le_bytes()[0..4].to_vec())
+    //     });
         
-        Ok(u8s)
-    }
-    pub fn deserialize<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
-        let bytes = bytes.as_ref();
-        if !(bytes.len() % 4 == 0) { return Err(anyhow!("input length must be divisible by 4")) }
-        let l = bytes.len() / 4;
+    //     Ok(u8s)
+    // }
+    // pub fn deserialize<T: AsRef<[u8]>>(bytes: T) -> Result<Self, Error> {
+    //     let bytes = bytes.as_ref();
+    //     if !(bytes.len() % 4 == 0) { return Err(anyhow!("input length must be divisible by 4")) }
+    //     let l = bytes.len() / 4;
 
-        let mut usizes = Vec::with_capacity(l);
-        let mut idx_start = 0;
-        for i_ in 0..l {
-            usizes.push(u32::from_le_bytes(bytes[idx_start..idx_start+4].try_into().unwrap()) as usize);
-            idx_start +=4;
-        }  
+    //     let mut usizes = Vec::with_capacity(l);
+    //     let mut idx_start = 0;
+    //     for i_ in 0..l {
+    //         usizes.push(u32::from_le_bytes(bytes[idx_start..idx_start+4].try_into().unwrap()) as usize);
+    //         idx_start +=4;
+    //     }  
         
-        if usizes[1] != 3 { return  Err(anyhow!("only 3 interleaved accumulators are supported now")) }
-        let nperms = usizes[1];
-        let codeword_len = usizes[2];
+    //     if usizes[1] != 3 { return  Err(anyhow!("only 3 interleaved accumulators are supported now")) }
+    //     let nperms = usizes[1];
+    //     let codeword_len = usizes[2];
 
-        let perms: Vec<(Vec<usize>, Vec<usize>)> = (0..nperms).map(|i| {
-            let start0 = 3 + i*codeword_len*2;
-            let start1 = start0 + codeword_len;
-            let end = start1 + codeword_len;
-            (   
-                // TODO: error instead of panic
-                usizes.get(start0..start1).expect("Permutation is too short").to_vec(), 
-                usizes.get(start1..end).expect("Permutation is too short").to_vec()
-            )
-        }).collect();
-        Ok(Self {
-            q: usizes[0],
-            permutations: perms.try_into().unwrap() // Shouldn't panic since legnth is gauranteed 3
-        })
-    }
+    //     let perms: Vec<(Vec<usize>, Vec<usize>)> = (0..nperms).map(|i| {
+    //         let start0 = 3 + i*codeword_len*2;
+    //         let start1 = start0 + codeword_len;
+    //         let end = start1 + codeword_len;
+    //         (   
+    //             // TODO: error instead of panic
+    //             usizes.get(start0..start1).expect("Permutation is too short").to_vec(), 
+    //             usizes.get(start1..end).expect("Permutation is too short").to_vec()
+    //         )
+    //     }).collect();
+    //     Ok(Self {
+    //         q: usizes[0],
+    //         permutations: perms.try_into().unwrap() // Shouldn't panic since legnth is gauranteed 3
+    //     })
+    // }
 }
 
 impl LinearCode for RAAACode {
@@ -457,17 +470,17 @@ mod test {
 
     use super::*;
 
-    #[test]
-    fn test_serialize_deserialize() {
-        let code = RAAACode {
-            permutations: [RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None)],
-            q: 2
-        };
-        // let code = RAAACode::rand_default();
-        let s = code.serialize().unwrap();
-        let d = RAAACode::deserialize(&s).unwrap();
-        assert!(d == code);
-    }
+    // #[test]
+    // fn test_serialize_deserialize() {
+    //     let code = RAAACode {
+    //         permutations: [RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None)],
+    //         q: 2
+    //     };
+    //     // let code = RAAACode::rand_default();
+    //     let s = code.serialize().unwrap();
+    //     let d = RAAACode::deserialize(&s).unwrap();
+    //     assert!(d == code);
+    // }
 
 
     #[test]

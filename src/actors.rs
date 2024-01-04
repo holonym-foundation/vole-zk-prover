@@ -48,7 +48,7 @@ pub struct SubspaceVOLESecrets {
     v2: FrMatrix
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProverCommitment {
     /// Hash of every pair of seed's respective hashes for the seeds used to create the VOLEs. We are just using two seeds per VOLE!
     /// Can/should be used for Fiat-Shamir of subspace VOLE consistency check
@@ -60,7 +60,7 @@ pub struct ProverCommitment {
     pub consistency_check: (FrVec, FrVec)
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Proof {
     pub zkp: ZKP,
     // pub prover_commitment: ProverCommitment,
@@ -74,13 +74,13 @@ pub struct Proof {
     pub s_consistency_check: FrVec,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CommitAndProof {
     pub commitment: ProverCommitment,
     pub proof: Proof
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubspaceVOLEOpening {
     /// Openings of one seed per pair
     pub seed_opens: Vec<[u8; 32]>,
@@ -311,6 +311,7 @@ impl Verifier {
         // Construct the subspace VOLE
         let q_rows = FrMatrix(q_cols).transpose();
         let deltas = FrVec(deltas);
+        
         let new_q_rows = self.code.correct_verifier_qs(&q_rows, &deltas, &comm.subspace_vole_correction);
         // Check that its outputs are in the subspace 
         let challenge_hash = &challenge_from_seed(&comm.seed_comm, "vole_consistency_check".as_bytes(), self.vole_length);
@@ -328,7 +329,7 @@ impl Verifier {
         let sgc_diag_delta = self.code.batch_encode(&proof.s_matrix.0).iter().map( |row| row * &deltas ).collect::<Vec<FrVec>>();
         let lhs = &challenges.s_challenge * &(&q1.scalar_mul(&challenges.vith_delta) + &q2).transpose();
         let rhs = &proof.s_consistency_check + &(&challenges.s_challenge * &FrMatrix(sgc_diag_delta).transpose());
-        if lhs != rhs { return Err(anyhow!("failed to verify S matrix"))}
+        if lhs != rhs { return Err(anyhow!("failed to verify S matrix")) }
 
         // Verify the ZKP
         let zk_verifier = quicksilver::Verifier::from_vith(&proof.s_matrix, challenges.vith_delta.clone(), &comm.witness_comm, self.circuit.clone());
