@@ -36,6 +36,12 @@ pub struct Fr([u64; 4]);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrVec(pub Vec<Fr>);
+// pub struct FrVec<T: PrimeField>(pub Vec<T>);
+
+// pub trait Field {
+//     fn fast_secure_rand(&mut rng: ) {}
+// }
+// pub struct F<T: PrimeField>
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparseVec<T: Mul + Add>(pub Vec<(usize, T)>);

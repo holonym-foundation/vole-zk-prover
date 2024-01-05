@@ -25,29 +25,10 @@ pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> FrVec {
     let mut r = StdRng::from_seed(seed);
     let mut out: Vec<Fr> = Vec::with_capacity(num_outputs);
 
-
     for _i in 0..num_outputs {
-        // Rejection sample a random 254 bit big-endian value
-        // Generate 4 u64s and try to put them into a Fr
-        // AND the two most significant bits with 00, producing a random 254 bit big-endian value
-        
-        let mut candidate = [
-            r.next_u64() & 0x3FFFFFFFFFFFFFFF,
-            r.next_u64(),
-            r.next_u64(),
-            r.next_u64(),
-        ];
-
-        while u64s_overflow_field(&candidate) {
-            candidate = [
-                r.next_u64() & 0x3FFFFFFFFFFFFFFF,
-                r.next_u64(),
-                r.next_u64(),
-                r.next_u64(),
-            ];
-        }
-        out.push(fr_from_be_u64_slice(&candidate));
+        out.push(Fr::random(&mut r));
     }
+    
     FrVec(out)
 }
 

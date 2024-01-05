@@ -96,15 +96,15 @@ fn criterion_benchmark(c: &mut Criterion) {
     // group.bench_function("expand to 4 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 4)));
     // group.bench_function("expand to 2^20 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed), 1048576)));
     // group.bench_function("1024 x 1024 transpose", |b|b.iter(||black_box(fr_matrix.clone()).transpose()));
-    // group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
+    group.bench_function("smallvole prover 1024 elements", |b|b.iter(move || VOLE::prover_outputs(black_box(&seed0), black_box(&seed1), 1024)));
     // // group.bench_function("expand to 2^10 Frs", |b|b.iter(move ||expand_seed_to_Fr_vec(black_box(seed()), 10)));
     // // c.bench_function("1048576 random Frs", |b| b.iter(|| rand_fr_vec(black_box(20))));
     // group.bench_function("Sparse Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).sparse_dot(black_box(&sparse_vec))));
     // group.bench_function("Vector Dot", |b|b.iter(|| black_box(&non_sparse_vec_1).dot(black_box(&non_sparse_vec_2))));
-    group.bench_function("Load R1CS, Witness, and Create the VOLE in the Head Quicksilver proof", |b|b.iter(load_and_prove));
+    // group.bench_function("Load R1CS, Witness, and Create the VOLE in the Head Quicksilver proof", |b|b.iter(load_and_prove));
     // group.bench_function("Calculate 1024x1024 binomial coefficient (n choose k) mat", |b|b.iter(||n_choose_k_square_matrix(black_box(1024))));
     // group.bench_function("Calculate 1024x1024 3x probability matrix", |b|b.iter(||calc_multi_transition_prob_matrix(64, 3)));
-    group.bench_function("Calculate circuit id", |b|b.iter(||{ let c = black_box(&*CIRCUIT); c.circuit_id().unwrap() }));
+    // group.bench_function("Calculate circuit id", |b|b.iter(||{ let c = black_box(&*CIRCUIT); c.circuit_id().unwrap() }));
     
 
 }
