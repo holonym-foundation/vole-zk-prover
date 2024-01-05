@@ -57,12 +57,6 @@ impl Display for FrMatrix {
         write!(f, "Matrix in row major order:\n[\n\t{}\n]", s.join("\n\t"))
     }
 }
-impl Mul for FrVec {
-    type Output = Self;
-    fn mul(self, rhs: Self) -> Self {
-        Self(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).collect())
-    }
-}
 
 // TODO: clean up this ridiculous math trait derivation :p
 
@@ -79,12 +73,6 @@ impl Add for FrVec {
     }
 }
 impl<'a, 'b> Add<&'b FrVec> for &'a FrVec {
-    type Output = FrVec;
-    fn add(self, rhs: &'b FrVec) -> FrVec {
-        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
-    }
-}
-impl<'a, 'b> Add<&'b FrVec> for &'a mut FrVec {
     type Output = FrVec;
     fn add(self, rhs: &'b FrVec) -> FrVec {
         FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
@@ -110,28 +98,8 @@ impl<'a, 'b> Sub<&'b FrVec> for &'a mut FrVec {
     }
 }
 
-impl<'a, 'b> Sub<&'b mut FrVec> for &'a mut FrVec {
-    type Output =  FrVec;
-    fn sub(self, rhs: &'b mut FrVec) -> FrVec {
-        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
-    }
-}
-
-impl<'a, 'b> SubAssign<&'b FrVec> for FrVec {
-    fn sub_assign(&mut self, rhs: &'b FrVec) {
-        // *self = FrVec(vec![Fr::ONE]);
-        self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
-    }
-}
 impl<'a, 'b> SubAssign<&'b mut FrVec> for FrVec {
     fn sub_assign(&mut self, rhs: &'b mut FrVec) {
-        // *self = FrVec(vec![Fr::ONE]);
-        self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
-    }
-}
-
-impl SubAssign for FrVec {
-    fn sub_assign(&mut self, rhs: Self) {
         // *self = FrVec(vec![Fr::ONE]);
         self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
     }
@@ -285,92 +253,12 @@ impl<'a, 'b> Mul<&'b SparseFrMatrix> for &'a FrVec {
     }
 }
 
-// // --
-// /// This is weird since the rhs should be the matrix. The reason it is done this way too is so 
-// /// that the R1CS or matrices in general can be an enum of either Sparse or Full, both of which 
-// /// implement Mul<FrVec>
-// impl<'a, 'b> Mul<&'b FrVec> for &'a FrMatrix {
-//     type Output = FrVec;
-//     fn mul(self, lhs: &'b FrVec) -> FrVec {
-//         FrVec(
-//             self.0.iter().map(|row_or_col| lhs.dot(row_or_col)).collect()
-//         )
-//     }
-// }
-
-// /// This is weird since the rhs should be the matrix. The reason it is done this way too is so 
-// /// that the R1CS or matrices in general can be an enum of either Sparse or Full, both of which 
-// /// implement Mul<FrVec>
-// impl<'a, 'b> Mul<&'b FrVec> for &'a Vec<SparseVec<Fr>> {
-//     type Output = FrVec;
-//     fn mul(self, lhs: &'b FrVec) -> FrVec {
-//         FrVec(
-//             self.iter().map(|row_or_col| lhs.sparse_dot(row_or_col)).collect()
-//         )
-//     }
-// }
-
-
 impl PartialEq for FrMatrix {
     fn eq(&self, rhs: &Self) -> bool {
         self.0.iter().zip(rhs.0.iter()).all(|(a, b)| a == b)
     }
 }
 
-impl polynomen::One for Fr {
-    fn one() -> Self {
-        Fr::ONE
-    }
-    fn is_one(&self) -> bool {
-       self.eq(&Fr::ONE)
-    }
-}
-
-
-impl polynomen::Zero for Fr {
-    fn zero() -> Self {
-        Fr::ZERO
-    }
-    fn is_zero(&self) -> bool {
-       self.eq(&Fr::ZERO)
-    }
-}
-
-impl num_traits::One for Fr {
-    fn one() -> Self {
-        Fr::ONE
-    }
-    fn is_one(&self) -> bool {
-       self.eq(&Fr::ONE)
-    }
-}
-impl num_traits::Zero for Fr {
-    fn zero() -> Self {
-        Fr::ZERO
-    }
-    fn is_zero(&self) -> bool {
-       self.eq(&Fr::ZERO)
-    }
-}
-
-// impl ClosedMul for Fr {}
-// impl std::ops::Mul for Fr {
-//     type Output = Self;
-//     fn mul(self, rhs: Self) -> Self {
-//         let mut out = self;
-//         out.mul_assign(rhs);
-//         out
-//     }
-// }
-// impl MulAssign for Fr {
-//     fn mul_assign(&mut self, rhs: Self) {
-//         *self = *self * rhs;
-//     }
-// }
-// // Crates such as nalgebra do not allow 
-// fn matmul_fr() {
-
-// }
 
 #[cfg(test)]
 mod test {

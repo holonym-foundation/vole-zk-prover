@@ -225,7 +225,7 @@ pub mod quicksilver {
             let (q_a, q_b, q_c) = r1cs.vec_mul(&self.q);
 
             // Quicksilver protocol to transform VOLE into a new VOLE that makes multiplcation gates linear relations
-            let new_q = &(q_a * q_b) - &q_c.scalar_mul(&self.delta);
+            let new_q = &(&q_a * &q_b) - &q_c.scalar_mul(&self.delta);
             let challenge_vec = get_challenge_vec(challenge, self.q.0.len());
             let success = proof.mul_proof.1 + proof.mul_proof.0 * self.delta == new_q.dot(&challenge_vec);
             match success {
