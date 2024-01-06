@@ -3,8 +3,9 @@ use rand::prelude::*;
 use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use num_bigint::BigUint;
+use rand_chacha::ChaCha12Rng;
 
-use crate::{Fr, FrRepr, FrVec, utils::{u64s_overflow_field, fr_from_be_u64_slice}};
+use crate::{Fr, FrVec};
 
 lazy_static! {
     pub static ref FIELD_MODULUS: BigUint = BigUint::from_str("21888242871839275222246405745257275088548364400416034343698204186575808495617").unwrap();
@@ -21,14 +22,13 @@ lazy_static! {
 /// Returns N Frs
 /// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
 pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> FrVec {
-    let seed: <StdRng as SeedableRng>::Seed = seed;
-    let mut r = StdRng::from_seed(seed);
+    let mut r = ChaCha12Rng::from_seed(seed);
     let mut out: Vec<Fr> = Vec::with_capacity(num_outputs);
 
     for _i in 0..num_outputs {
         out.push(Fr::random(&mut r));
     }
-    
+
     FrVec(out)
 }
 
@@ -93,36 +93,6 @@ mod test {
         assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 1000).0.len(), 1000);
     }
 
-    #[test]
-    // TODO: add more edge cases
-    fn test_fr_from_512bits() {
-        let mut x = [0u64; 4];
-
-        // Commented out the next two tests because now desired behavior is to panic when it overflows modulus
-        // TODO: assert they panic
-        // // Try with modulus + 1
-        // x[0] = 0x30644E72E131A029;
-        // x[1] = 0xB85045B68181585D;
-        // x[2] = 0x2833E84879B97091;
-        // x[3] = 0x43E1F593F0000002;
-
-        // assert_eq!(fr_from_be_u64_slice(&x), Fr::from_str_vartime("1").unwrap());
-
-        // x[0] = 0x30644E72E131A029;
-        // x[1] = 0xB85045B68181585D;
-        // x[2] = 0x2833E84879B97091;
-        // x[3] = 0x43E1F593F0000001;
-
-        // assert_eq!(fr_from_be_u64_slice(&x), Fr::from_str_vartime("0").unwrap());
-
-        x[0] = 0x0;
-        x[1] = 0x0;
-        x[2] = 0x0;
-        x[3] = 0x03;
-
-        assert_eq!(fr_from_be_u64_slice(&x), Fr::from_str_vartime("3").unwrap());
-    }
-    
     #[test]
     fn test_seed_commit_prove() {
         let seed0 = [5u8; 32];

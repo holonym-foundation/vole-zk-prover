@@ -1,7 +1,8 @@
 //! Fiat-shamir challenges all in one place
-use ff::PrimeField;
-use rand::{rngs::StdRng, SeedableRng, RngCore};
-use crate::{zkp::quicksilver::ZKP, FrVec, vecccom::expand_seed_to_Fr_vec, actors::actors::PublicOpenings, Fr, utils::rejection_sample_u8s, FrMatrix, DotProduct};
+use ff::{PrimeField, Field};
+use rand::{RngCore, SeedableRng};
+use rand_chacha::ChaCha12Rng;
+use crate::{zkp::quicksilver::ZKP, FrVec, vecccom::expand_seed_to_Fr_vec, actors::actors::PublicOpenings, Fr, FrMatrix, DotProduct};
 
 pub struct Challenges {
     /// Small-field VOLE ∆ indices
@@ -34,7 +35,7 @@ pub fn calc_quicksilver_challenge(seed_comm: &[u8; 32], witness_comm: &FrMatrix)
     );
     // Hashing may be unecessary but is cheap and removes any potential linear correlation (i have not checekd whether that correlation would be problematic)
     let digest = *blake3::hash(&compressed.to_repr().0.to_vec()).as_bytes();
-    rejection_sample_u8s(&digest)
+    Fr::random(&mut ChaCha12Rng::from_seed(digest))
 }
 
 /// Called by Verifier and Prover to calculate the original VOLE ∆s along with the ∆' 
@@ -72,12 +73,11 @@ pub fn calc_other_challenges(seed_comm: &[u8; 32], witness_comm: &FrMatrix, zkp:
     });
 
     let delta_first_try = *blake3::hash(&concatted).as_bytes();
-    let vith_delta = rejection_sample_u8s(&delta_first_try);
+    let vith_delta = Fr::random(&mut ChaCha12Rng::from_seed(delta_first_try));
 
     concatted.append(&mut "subspace_vole_challenge".as_bytes().to_vec());
     let subspace_vole_delta_seed = *blake3::hash(&concatted).as_bytes();
-    let prg_seed: <StdRng as SeedableRng>::Seed = subspace_vole_delta_seed;
-    let mut prg = StdRng::from_seed(prg_seed);
+    let mut prg = ChaCha12Rng::from_seed(subspace_vole_delta_seed);
     let mut delta_choices: Vec<usize> = Vec::with_capacity(num_voles);
     // This is inefficient but not a bottleneck
     (0..num_voles).for_each(|_|delta_choices.push((prg.next_u32() % 2) as usize));

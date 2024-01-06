@@ -3,16 +3,19 @@
 use blake3::Hasher;
 use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
-use rand::{rngs::{ThreadRng, StdRng}, SeedableRng, RngCore};
+use rand::{rngs::{ThreadRng}, SeedableRng, RngCore};
+use rand_chacha::ChaCha12Rng;
 
-use crate::{Fr, vecccom::{expand_seed_to_Fr_vec}, FrVec, utils::{truncate_u8_32_to_254_bit_u64s_be, u64s_overflow_field, fr_from_be_u64_slice, rejection_sample_u8s}, ScalarMul};
+use crate::{Fr, vecccom::expand_seed_to_Fr_vec, FrVec, ScalarMul};
 
 lazy_static! {
     // Commented out original logic to generate these delta choices, so it can still be seen / verified
     pub static ref DELTA_CHOICES: [Fr; 2] = {
-        let mut first_digest = *blake3::hash("First ∆".as_bytes()).as_bytes();
-        let mut second_digest = *blake3::hash("Second ∆".as_bytes()).as_bytes();
-        [rejection_sample_u8s(&first_digest), rejection_sample_u8s(&second_digest)]
+        let mut digest = *blake3::hash("Silk ∆ choices".as_bytes()).as_bytes();
+        let mut rng = ChaCha12Rng::from_seed(digest);
+        let f1 = Fr::random(&mut rng); let f2 = Fr::random(&mut rng);
+        debug_assert!(f1 != f2);
+        [f1, f2]
     };
 }
 pub struct ProverSmallVOLEOutputs { 
@@ -65,8 +68,7 @@ impl TestMOLE {
         // let mut seeds = Vec::with_capacity(num_voles);
         let mut prover_outputs = Vec::with_capacity(num_voles);
         let mut verifier_outputs = Vec::with_capacity(num_voles);
-        let seed_seed: <StdRng as SeedableRng>::Seed = master_seed;
-        let mut r = StdRng::from_seed(seed_seed);
+        let mut r = ChaCha12Rng::from_seed(master_seed);
         for i in 0..num_voles {
             let mut seed0 = [0u8; 32];
             let mut seed1 = [0u8; 32];
