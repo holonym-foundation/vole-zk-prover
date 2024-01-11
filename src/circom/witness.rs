@@ -3,15 +3,13 @@ use ff::PrimeField;
 use std::io::Read;
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{Fr, FrVec, FrRepr};
+use crate::{FVec, Fr};
 
 use super::{read_fr, read_fr_vec};
 
-type Witness = Vec<Fr>;
-
 /// Parses bytes in a circom .wtns binary format
 /// Borrowed extensively from Nova Scotia https://github.com/nalinbhardwaj/Nova-Scotia/blob/main/src/circom/reader.rs
-pub fn wtns_from_reader<R: Read>(mut reader: R) -> Result<FrVec, Error> {
+pub fn wtns_from_reader<R: Read>(mut reader: R) -> Result<FVec<Fr>, Error> {
     let mut wtns_header = [0u8; 4];
     reader.read_exact(&mut wtns_header)?;
     if wtns_header != "wtns".as_bytes() {
@@ -56,7 +54,7 @@ pub fn wtns_from_reader<R: Read>(mut reader: R) -> Result<FrVec, Error> {
     }
 
     Ok(
-        FrVec(read_fr_vec(reader, witness_len as usize))
+        FVec::<Fr>(read_fr_vec(reader, witness_len as usize))
     )
 }
 

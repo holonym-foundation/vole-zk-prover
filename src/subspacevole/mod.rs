@@ -4,7 +4,7 @@ use num_traits::ToBytes;
 use rand::{Rng, SeedableRng};
 use rand::rngs::{ThreadRng};
 use rand_chacha::ChaCha20Rng;
-use crate::{Fr, FrVec, FrMatrix, NUM_VOLES};
+use crate::{FVec, FMatrix, NUM_VOLES, PF};
 use crate::ff::Field;
 
 // lazy_static! {
@@ -14,42 +14,41 @@ use crate::ff::Field;
 pub trait LinearCode {
     fn k(&self) -> usize;
     fn n(&self) -> usize;
-    fn encode(&self, vec: &FrVec) -> FrVec;
-    fn encode_extended(&self, vec: &FrVec) -> FrVec;
-    fn check_parity(&self, putative_codeword: &FrVec) -> bool;
-    fn check_parity_batch(&self, putative_codewords: &Vec<FrVec>) -> Result<(), Error> {
+    fn encode<T: PF>(&self, vec: &FVec<T>) -> FVec<T>;
+    fn encode_extended<T: PF>(&self, vec: &FVec<T>) -> FVec<T>;
+    fn check_parity<T: PF>(&self, putative_codeword: &FVec<T>) -> bool;
+    fn check_parity_batch<T: PF>(&self, putative_codewords: &Vec<FVec<T>>) -> Result<(), Error> {
         match putative_codewords.iter().all(|pc|self.check_parity(pc)) {
             true => Ok(()),
             false => Err(anyhow!("Parity check failure"))
         }
     }
-
-    fn mul_vec_by_extended_inverse(&self, u: &FrVec) -> FrVec;
-    fn batch_encode(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
+    fn mul_vec_by_extended_inverse<T: PF>(&self, u: &FVec<T>) -> FVec<T>;
+    fn batch_encode<T: PF>(&self, matrix: &Vec<FVec<T>>) -> Vec<FVec<T>> {
         matrix.iter().map(|x|self.encode(x)).collect()
     }
-    fn batch_encode_extended(&self, matrix: &Vec<FrVec>) -> Vec<FrVec> {
+    fn batch_encode_extended<T: PF>(&self, matrix: &Vec<FVec<T>>) -> Vec<FVec<T>> {
         matrix.iter().map(|x|self.encode_extended(x)).collect()
     }
     /// Calculates the prover's correction value for the whole U matrix
-    fn mul_matrix_by_extended_inverse(&self, old_us: &FrMatrix) -> Vec<FrVec> {
+    fn mul_matrix_by_extended_inverse<T: PF>(&self, old_us: &FMatrix<T>) -> Vec<FVec<T>> {
         old_us.0.iter().map(|u|self.mul_vec_by_extended_inverse(u)).collect()
     }
     /// Returns (U, C) where U is the prover's correct U and C the correction value to send to verifier
     /// k is the dimension of the code
-    fn get_prover_correction(&self, old_us: &FrMatrix) -> (FrMatrix, FrMatrix) {
+    fn get_prover_correction<T: PF>(&self, old_us: &FMatrix<T>) -> (FMatrix<T>, FMatrix<T>) {
         let l = old_us.0[0].0.len();
         let start_idx = self.k();
         let full_size = self.mul_matrix_by_extended_inverse(old_us);
         
         (
-            FrMatrix(full_size.iter().map(|u|FrVec(u.0[0..start_idx].to_vec())).collect()),
-            FrMatrix(full_size.iter().map(|u|FrVec(u.0[start_idx..].to_vec())).collect())
+            FMatrix::<T>(full_size.iter().map(|u|FVec::<T>(u.0[0..start_idx].to_vec())).collect()),
+            FMatrix::<T>(full_size.iter().map(|u|FVec::<T>(u.0[start_idx..].to_vec())).collect())
         )
     }
 
     /// Corrects the verifier's Q matrix give the prover's correction
-    fn correct_verifier_qs(&self, old_qs: &FrMatrix, deltas: &FrVec, correction: &FrMatrix) -> FrMatrix {
+    fn correct_verifier_qs<T: PF>(&self, old_qs: &FMatrix<T>, deltas: &FVec<T>, correction: &FMatrix<T>) -> FMatrix<T> {
         // Concatenate zero matrix with C as in the subsapace VOLE protocol:
         let l = old_qs.0[0].0.len();
         let correction_len = correction.0[0].0.len();
@@ -57,18 +56,18 @@ pub trait LinearCode {
         let zero_len = l - correction_len;
         let zeroes_cons_c = (0..old_qs.0.len()).map(|i|{
             let mut out = Vec::with_capacity(l);
-            out.append(&mut vec![Fr::ZERO; zero_len]);
+            out.append(&mut vec![T::ZERO; zero_len]);
             out.append(&mut correction.0[i].0.clone());
-            FrVec(out)
-        }).collect::<Vec<FrVec>>();
+            FVec::<T>(out)
+        }).collect::<Vec<FVec<T>>>();
         
         let times_extended_generator = self.batch_encode_extended(&zeroes_cons_c);
         let times_deltas = times_extended_generator.iter().map(|x| {
             x * deltas
             //x.0.iter().zip(deltas.0.iter()).map(|(a, b)| a * b)
-        }).collect::<Vec<FrVec>>();
+        }).collect::<Vec<FVec<T>>>();
         
-        FrMatrix(
+        FMatrix::<T>(
             old_qs.0.iter().zip(&times_deltas).map(|(q, t)|q - t).collect()
         )
     }
@@ -79,7 +78,7 @@ pub trait LinearCode {
     /// TODO: generics instead of RAAACode. And ofc generics for field
     /// AUDIT this consistency check -- in the original paper the challenge hash is a matrix. For large fields it seems a 1xn matrix, 
     /// i.e. a vector, is sufficient. However, this should be double-checked :)
-    fn verify_consistency_check(&self, challenge_hash: &FrVec, consistency_check: &(FrVec, FrVec), deltas: &FrVec, q_cols: &FrMatrix) -> Result<(), Error> {
+    fn verify_consistency_check<T: PF>(&self, challenge_hash: &FVec<T>, consistency_check: &(FVec<T>, FVec<T>), deltas: &FVec<T>, q_cols: &FMatrix<T>) -> Result<(), Error> {
         let u_hash = &consistency_check.0;
         let v_hash = &consistency_check.1;
         let q_hash = challenge_hash * q_cols;
@@ -109,17 +108,17 @@ pub struct RAAACode {
     pub q: usize
 }
 impl RAAACode {
-    pub fn repeat(input: &FrVec, num_repeats: usize) -> FrVec {
+    pub fn repeat<T: PF>(input: &FVec<T>, num_repeats: usize) -> FVec<T> {
         let mut out = Vec::with_capacity(num_repeats * input.0.len());
         for _ in 0..num_repeats {
             out.append(&mut input.0.clone());
         }
-        FrVec(out)
+        FVec::<T>(out)
     }
-    // pub fn repeat_inverse(input: &FrVec, num_repeats: usize) -> FrVec {
+    // pub fn repeat_inverse(input: &FVec<T>, num_repeats: usize) -> FVec<T> {
     //     assert!(input.0.len() % num_repeats == 0, "input length must be divisible by num_repeats");
     //     let out_len = input.0.len() / num_repeats;
-    //     FrVec(input.0[0..out_len].to_vec())
+    //     FVec<T>(input.0[0..out_len].to_vec())
     // }
     
     /// Represents an invertible repetition matrix with extra rows so it's nxn rather than kxn
@@ -178,54 +177,54 @@ impl RAAACode {
     /// [ 0 0 0 0 0 0 0 0 1 ]
     /// The sparse description of these matrices are "clone the input vector. Let its 2nd and 3rd thirds += its first third"
     /// And "clone the input vector. Let its 2nd and 3rd thirds -= its first thirds."
-    pub fn repeat_extended(input: &FrVec, q: usize) -> FrVec {
+    pub fn repeat_extended<T: PF>(input: &FVec<T>, q: usize) -> FVec<T> {
         let len = input.0.len();
         assert!(len % q == 0, "length must be divisible by q");
         let section_len = len / q;
-        let zeroth_section = FrVec(input.0[0..section_len].to_vec());
+        let zeroth_section = FVec::<T>(input.0[0..section_len].to_vec());
         let mut out = Vec::with_capacity(len);
         out.append(&mut zeroth_section.0.clone());
         for i in 1..q {
             let start_idx = section_len * i;
             let new = &mut (&zeroth_section + 
-                        &FrVec(input.0[start_idx..start_idx+section_len].to_vec()));
+                        &FVec::<T>(input.0[start_idx..start_idx+section_len].to_vec()));
             out.append(&mut new.0);
         }
-        FrVec(out)
+        FVec::<T>(out)
 
     }
 
-    pub fn repeat_extended_inverse(input: &FrVec, q: usize) -> FrVec {
+    pub fn repeat_extended_inverse<T: PF>(input: &FVec<T>, q: usize) -> FVec<T> {
         let len = input.0.len();
         assert!(len % q == 0, "length must be divisible by q");
         let section_len = len / q;
-        let zeroth_section = FrVec(input.0[0..section_len].to_vec());
+        let zeroth_section = FVec::<T>(input.0[0..section_len].to_vec());
         let mut out = Vec::with_capacity(len);
         out.append(&mut zeroth_section.0.clone());
         for i in 1..q {
             let start_idx = section_len * i;
             let new = &mut (
-                &FrVec(input.0[start_idx..start_idx+section_len].to_vec()) - 
+                &FVec::<T>(input.0[start_idx..start_idx+section_len].to_vec()) - 
                 &zeroth_section
             );
             out.append(&mut new.0);
         }
-        FrVec(out)
+        FVec::<T>(out)
     }
 
     /// Permutation is not checked to be uniform. It simply contains a vec of new indices
     /// Interleave inverse is just interleave with the inverse of `permutation`
-    pub fn interleave(input: &FrVec, permutation: &Vec<u32>) -> FrVec {
+    pub fn interleave<T: PF>(input: &FVec<T>, permutation: &Vec<u32>) -> FVec<T> {
         let len = input.0.len();
         assert!(len == permutation.len(), "input length {} must match number of swaps {}", len, permutation.len());
-        let mut out = vec![Fr::ZERO; len];
+        let mut out = vec![T::ZERO; len];
         for i in 0..len {
             out[permutation[i] as usize] = input.0[i];
         }
-        FrVec(out)
+        FVec::<T>(out)
     }
 
-    pub fn accumulate(input: &FrVec) -> FrVec {
+    pub fn accumulate<T: PF>(input: &FVec<T>) -> FVec<T> {
         let l = input.0.len();
         let mut out = Vec::with_capacity(l);
         out.push(input.0[0]);
@@ -233,9 +232,9 @@ impl RAAACode {
             out.push(input.0[i] + out[i-1]);
         }
         // let out = input.0.iter().reduce(|a, b| &(*a + b)).unwrap(); // Shouldn't panic because its simply addition...
-        FrVec(out)
+        FVec::<T>(out)
     }
-    pub fn accumulate_inverse(input: &FrVec) -> FrVec {
+    pub fn accumulate_inverse<T: PF>(input: &FVec<T>) -> FVec<T> {
         let l = input.0.len();
         let mut out = Vec::with_capacity(l);
         out.push(input.0[0]);
@@ -243,7 +242,7 @@ impl RAAACode {
             out.push(input.0[i] - input.0[i-1]);
         }
         // let out = input.0.iter().reduce(|a, b| &(*a + b)).unwrap(); // Shouldn't panic because its simply addition...
-        FrVec(out)
+        FVec::<T>(out)
     }
     /// Returns a uniform permutation and its inverse
     /// It will be deterministic if and only if a seed is provided
@@ -285,11 +284,13 @@ impl RAAACode {
             format!("VOLE in the head RAAA code interleave {}", i).as_bytes()
             ).as_bytes()
         }).collect::<Vec<[u8; 32]>>();
+
         let permutations = [
             RAAACode::random_interleave_permutations(NUM_VOLES, Some(interleave_seeds[0])),
             RAAACode::random_interleave_permutations(NUM_VOLES, Some(interleave_seeds[1])),
             RAAACode::random_interleave_permutations(NUM_VOLES, Some(interleave_seeds[2])),
         ];
+
         RAAACode { permutations, q: 2 }
     }
     /// For testing. Note that block size under roughly 1024 for current code may not give 128 bits of security
@@ -381,7 +382,7 @@ impl LinearCode for RAAACode {
         self.permutations[0].0.len()
     }
     /// Converts a vector to its codeword
-    fn encode(&self, vec: &FrVec) -> FrVec {
+    fn encode<T: PF>(&self, vec: &FVec<T>) -> FVec<T> {
         let repeated = Self::repeat(vec, self.q);
         let in0 = Self::interleave(&repeated, &self.permutations[0].0);
         let acc0 = Self::accumulate(&in0);
@@ -394,7 +395,7 @@ impl LinearCode for RAAACode {
     }
 
     /// Multiplies a single vector by the Tc matrix, the extended codeword generator to be invertible
-    fn encode_extended(&self, vec: &FrVec) -> FrVec {
+    fn encode_extended<T: PF>(&self, vec: &FVec<T>) -> FVec<T> {
         let repeated = Self::repeat_extended(vec, self.q);
         let in0 = Self::interleave(&repeated, &self.permutations[0].0);
         let acc0 = Self::accumulate(&in0);
@@ -407,7 +408,7 @@ impl LinearCode for RAAACode {
     }
 
     /// Returns a single u vector multiplied by the Tc^-1 matrix (the extended generator matrix that is invertible). 
-    fn mul_vec_by_extended_inverse(&self, u: &FrVec) -> FrVec { 
+    fn mul_vec_by_extended_inverse<T: PF>(&self, u: &FVec<T>) -> FVec<T> { 
         let acc2_inv = Self::accumulate_inverse(&u);
         let in2_inv = Self::interleave(&acc2_inv, &self.permutations[2].1);
         let acc1_inv = Self::accumulate_inverse(&in2_inv);
@@ -421,7 +422,7 @@ impl LinearCode for RAAACode {
 
     /// SECURITY TODO: (for audit?) check this is sufficient for determining whether something is a RAAA codeword
     /// For partity check, you can invert the accumulations and permutations and then check the result is in the subspace of the repetition code
-    fn check_parity(&self, putative_codeword: &FrVec) -> bool {
+    fn check_parity<T: PF>(&self, putative_codeword: &FVec<T>) -> bool {
         // Invet all the operations until the initial repetition code
         let acc2_inv = Self::accumulate_inverse(&putative_codeword);
         let in2_inv = Self::interleave(&acc2_inv, &self.permutations[2].1);
@@ -453,7 +454,7 @@ impl LinearCode for RAAACode {
 /// WARNING If Using a smaller field, it may be important to use a challenge matrix instead of vector for sufficient security! 
 /// Returns (challenge_hash*u, challenge_hash*v)
 /// 
-pub fn calc_consistency_check(challenge_hash: &FrVec, u_cols: &FrMatrix, v_cols: &FrMatrix) -> (FrVec, FrVec) {
+pub fn calc_consistency_check<T: PF>(challenge_hash: &FVec<T>, u_cols: &FMatrix<T>, v_cols: &FMatrix<T>) -> (FVec<T>, FVec<T>) {
     (challenge_hash * u_cols, challenge_hash * v_cols)
 }
 
@@ -466,7 +467,7 @@ mod test {
     use nalgebra::{Matrix2x4, Matrix4x2};
     use rand::rngs::ThreadRng;
 
-    use crate::{FrRepr, smallvole::{self, VOLE, TestMOLE}};
+    use crate::{FrRepr, smallvole::{self, VOLE, TestMOLE}, Fr};
 
     use super::*;
 
@@ -487,17 +488,17 @@ mod test {
     fn test_permutation_and_inverse() {
         let (forward, backward) = RAAACode::random_interleave_permutations(5, None);
         let input = (0..5).map(|_|Fr::random(&mut ThreadRng::default())).collect();
-        let input = FrVec(input);
+        let input = FVec::<Fr>(input);
         let permuted = RAAACode::interleave(&input, &forward);
         let inverse_permuted = RAAACode::interleave(&permuted, &backward);
         assert_eq!(input, inverse_permuted);
     }
     #[test]
     fn test_accumulate_and_inverse() {
-        let test0 = FrVec(vec![Fr::ZERO; 5]);
-        let test1 = FrVec(vec![Fr::ONE; 5]);
-        let test2 = FrVec(vec![Fr::ZERO, Fr::ONE, Fr::from_u128(2), Fr::from_u128(3)]);
-        let test3 = FrVec(vec![Fr::ZERO, Fr::from_u128(2), Fr::ONE, Fr::from_u128(3)]);
+        let test0 = FVec::<Fr>(vec![Fr::ZERO; 5]);
+        let test1 = FVec::<Fr>(vec![Fr::ONE; 5]);
+        let test2 = FVec::<Fr>(vec![Fr::ZERO, Fr::ONE, Fr::from_u128(2), Fr::from_u128(3)]);
+        let test3 = FVec::<Fr>(vec![Fr::ZERO, Fr::from_u128(2), Fr::ONE, Fr::from_u128(3)]);
 
         assert_eq!(RAAACode::accumulate(&test0).0, vec![Fr::ZERO; 5]);
         assert_eq!(RAAACode::accumulate(&test1).0, vec![Fr::ONE, Fr::from_u128(2), Fr::from_u128(3), Fr::from_u128(4), Fr::from_u128(5)]);
@@ -510,9 +511,9 @@ mod test {
     }
     #[test]
     fn test_repeat() {
-        let test0 = FrVec(vec![Fr::ZERO]);
-        let test1 = FrVec(vec![Fr::ONE]);
-        let test2 = FrVec(vec![Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456)]);
+        let test0 = FVec::<Fr>(vec![Fr::ZERO]);
+        let test1 = FVec::<Fr>(vec![Fr::ONE]);
+        let test2 = FVec::<Fr>(vec![Fr::from_u128(10), Fr::from_u128(11), Fr::from_u128(123456)]);
         assert_eq!(RAAACode::repeat(&test0, 2).0, vec![Fr::ZERO, Fr::ZERO]);
         assert_eq!(RAAACode::repeat(&test0, 3).0, vec![Fr::ZERO, Fr::ZERO, Fr::ZERO]);
         assert_eq!(RAAACode::repeat(&test1, 2).0, vec![Fr::ONE, Fr::ONE]);
@@ -527,8 +528,8 @@ mod test {
         let in0 = vec![Fr::from_u128(0), Fr::from_u128(1), Fr::from_u128(2), Fr::from_u128(3), Fr::from_u128(4), Fr::from_u128(5)];
         let in1 = vec![Fr::from_u128(5), Fr::from_u128(10), Fr::from_u128(15), Fr::from_u128(20), Fr::from_u128(25), Fr::from_u128(30)];
 
-        let out0 = RAAACode::repeat_extended(&FrVec(in0.clone()), 2);
-        let out1 = RAAACode::repeat_extended(&FrVec(in1.clone()),3);
+        let out0 = RAAACode::repeat_extended(&FVec::<Fr>(in0.clone()), 2);
+        let out1 = RAAACode::repeat_extended(&FVec::<Fr>(in1.clone()),3);
         
         let inverted0 = RAAACode::repeat_extended_inverse(&out0, 2);
         let inverted1 = RAAACode::repeat_extended_inverse(&out1,3);
@@ -542,14 +543,14 @@ mod test {
     fn test_extended_encode() {
         let input = vec![Fr::from_u128(1), Fr::from_u128(5), Fr::from_u128(10), Fr::from_u128(0)];
         let code = RAAACode::rand_with_parameters(4, 2);
-        let codeword = code.encode_extended(&FrVec(input.clone()));
+        let codeword = code.encode_extended(&FVec::<Fr>(input.clone()));
         let inverse = code.mul_vec_by_extended_inverse(&codeword);
         assert_eq!(input, inverse.0);
     }
     
     #[test]
     fn test_prover_correction() {
-        let test_mole = TestMOLE::init([123u8; 32], 16, 1024);
+        let test_mole: TestMOLE<Fr> = TestMOLE::init([123u8; 32], 16, 1024);
         // Check (at least one of the) VOLEs (and therefore likely all of them) was successful
         assert!(
             izip!(&test_mole.prover_outputs[7].u.0, &test_mole.prover_outputs[7].v.0, &test_mole.verifier_outputs[7].q.0).all(
@@ -557,10 +558,10 @@ mod test {
             )
         );
 
-        let u_cols = FrMatrix(test_mole.prover_outputs.iter().map(|o|o.u.clone()).collect::<Vec<FrVec>>());
-        let v_cols = FrMatrix(test_mole.prover_outputs.iter().map(|o|o.v.clone()).collect::<Vec<FrVec>>());
-        let q_cols = FrMatrix(test_mole.verifier_outputs.iter().map(|o|o.q.clone()).collect::<Vec<FrVec>>());
-        let deltas = FrVec(test_mole.verifier_outputs.iter().map(|o|o.delta.clone()).collect());
+        let u_cols = FMatrix::<Fr>(test_mole.prover_outputs.iter().map(|o|o.u.clone()).collect::<Vec<FVec::<Fr>>>());
+        let v_cols = FMatrix::<Fr>(test_mole.prover_outputs.iter().map(|o|o.v.clone()).collect::<Vec<FVec::<Fr>>>());
+        let q_cols = FMatrix::<Fr>(test_mole.verifier_outputs.iter().map(|o|o.q.clone()).collect::<Vec<FVec::<Fr>>>());
+        let deltas = FVec::<Fr>(test_mole.verifier_outputs.iter().map(|o|o.delta.clone()).collect());
         
         let u_rows = u_cols.transpose();
         let v_rows = v_cols.transpose();
@@ -589,9 +590,9 @@ mod test {
             permutations: [RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None), RAAACode::random_interleave_permutations(6, None)],
             q: 2
         };
-        let input = FrVec::random(3);
+        let input = FVec::<Fr>::random(3);
         // let code = RAAACode::rand_default();
-        // let input = FrVec::random(512);
+        // let input = FVec<T>::random(512);
         let codeword = code.encode(&input);
         let mut invalid_codeword = codeword.clone();
         invalid_codeword.0[2] = Fr::random(&mut rand::thread_rng());
@@ -604,8 +605,8 @@ mod test {
     #[test]
     fn check_parity_batch() {
         let code = RAAACode::rand_default();
-        let input: Vec<FrVec> = (0..10).map(|_|FrVec::random(512)).collect();
-        let mut codewords: Vec<FrVec> = input.iter().map(|x|code.encode(x)).collect();
+        let input: Vec<FVec::<Fr>> = (0..10).map(|_|FVec::<Fr>::random(512)).collect();
+        let mut codewords: Vec<FVec::<Fr>> = input.iter().map(|x|code.encode(x)).collect();
         assert!(code.check_parity_batch(&codewords).is_ok());
         codewords[2].0[7] = Fr::random(&mut rand::thread_rng());
         assert!(code.check_parity_batch(&codewords).is_err())

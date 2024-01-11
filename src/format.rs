@@ -1,5 +1,5 @@
 //! Reads and write proof formats.
-use crate::{actors::actors::Proof, Fr, FrRepr};
+use crate::{actors::actors::Proof, Fr, FrRepr, PF};
 use ff::PrimeField;
 use serde::{ser::{Serialize, Serializer, SerializeStruct}, de::{Deserialize, Visitor, Expected}};
 
@@ -18,6 +18,7 @@ use serde::{ser::{Serialize, Serializer, SerializeStruct}, de::{Deserialize, Vis
 // pub fn derive_serialize_efficiently(_item: TokenStream) -> TokenStream {
 //     "fn serialize_efficiently() -> Vec<u8> { vec![69; 69] }".parse().unwrap()
 // }
+
 
 impl<'a> Serialize for Fr {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -58,7 +59,7 @@ mod test {
     use ff::Field;
     use rand::thread_rng;
 
-    use crate::FrVec;
+    use crate::FVec;
 
     use super::*;
     #[test]
@@ -82,9 +83,9 @@ mod test {
         let negone = zero - one;
         let rand = Fr::random(&mut thread_rng());
         let test_cases = vec![zero, one, negone, rand]; 
-        let v = FrVec(test_cases);
+        let v = FVec::<Fr>(test_cases);
         let s = bincode::serialize(&v).unwrap();
-        let d: FrVec = bincode::deserialize(&s).unwrap();
+        let d: FVec<Fr> = bincode::deserialize(&s).unwrap();
         assert_eq!(v, d);
     }
 }

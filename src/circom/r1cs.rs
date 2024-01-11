@@ -6,11 +6,9 @@ use itertools::Itertools;
 use std::{io::{Read, Seek, SeekFrom}, collections::HashMap};
 use byteorder::{LittleEndian, ReadBytesExt};
 
-use crate::{Fr, FrVec, FrMatrix, zkp::{R1CS, R1CSWithMetadata, FullR1CS, SparseR1CS}, SparseFrMatrix, SparseVec};
+use crate::{FVec, FMatrix, PF, zkp::{R1CS, R1CSWithMetadata, FullR1CS, SparseR1CS}, SparseFMatrix, SparseVec, Fr};
 
 use super::read_constraint_vec;
-
-type Witness = Vec<Fr>;
 
 // R1CSFile's header
 #[derive(Debug)]
@@ -27,9 +25,9 @@ pub struct Header {
 
 #[derive(Debug)]
 pub struct Constraints {
-    a_rows: SparseFrMatrix,
-    b_rows: SparseFrMatrix,
-    c_rows: SparseFrMatrix,
+    a_rows: SparseFMatrix<Fr>,
+    b_rows: SparseFMatrix<Fr>,
+    c_rows: SparseFMatrix<Fr>,
     // a_wires: Vec<Vec<usize>>,
     // b_wires: Vec<Vec<usize>>,
     // c_wires: Vec<Vec<usize>>
@@ -45,7 +43,7 @@ pub struct R1CSFile {
 
 impl R1CSFile {
     /// Converts this to the R1CS format used by the rest of this crate
-    pub fn to_crate_format(self) -> R1CSWithMetadata {
+    pub fn to_crate_format(self) -> R1CSWithMetadata<Fr> {
         let r1cs_ = SparseR1CS {
             a_rows: self.constraints.a_rows,
             b_rows: self.constraints.b_rows,
@@ -171,9 +169,9 @@ fn read_constraints<R: Read>(
         b_rows.push(read_constraint_vec(&mut reader));
         c_rows.push(read_constraint_vec(&mut reader));
     }
-    let a_rows = SparseFrMatrix(a_rows);
-    let b_rows = SparseFrMatrix(b_rows);
-    let c_rows = SparseFrMatrix(c_rows);
+    let a_rows = SparseFMatrix(a_rows);
+    let b_rows = SparseFMatrix(b_rows);
+    let c_rows = SparseFMatrix(c_rows);
 
     Constraints { a_rows, b_rows, c_rows }
 }

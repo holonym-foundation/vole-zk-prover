@@ -5,31 +5,19 @@ use lazy_static::lazy_static;
 use num_bigint::BigUint;
 use rand_chacha::ChaCha12Rng;
 
-use crate::{Fr, FrVec};
-
-lazy_static! {
-    pub static ref FIELD_MODULUS: BigUint = BigUint::from_str("21888242871839275222246405745257275088548364400416034343698204186575808495617").unwrap();
-    /// 2^64
-    pub static ref TWO_64: Fr = Fr::from_str_vartime("18446744073709551616").unwrap();
-    /// 2^128
-    pub static ref TWO_128: Fr = Fr::from_str_vartime("340282366920938463463374607431768211456").unwrap();
-    /// 2^192
-    pub static ref TWO_192: Fr = Fr::from_str_vartime("6277101735386680763835789423207666416102355444464034512896").unwrap();
-}
-
+use crate::{FVec, PF};
 
 /// Newer method much faster: use a CSPRNG
 /// Returns N Frs
 /// As long as the adversary doesn't learn the seed (for a couple reasons throughout the protocol, they shouldn't), they can't predict any of the outputs
-pub fn expand_seed_to_Fr_vec(seed: [u8; 32], num_outputs: usize) -> FrVec {
+pub fn expand_seed_to_field_vec<T: PF>(seed: [u8; 32], num_outputs: usize) -> FVec<T> {
     let mut r = ChaCha12Rng::from_seed(seed);
-    let mut out: Vec<Fr> = Vec::with_capacity(num_outputs);
+    let mut out: Vec<T> = Vec::with_capacity(num_outputs);
 
     for _i in 0..num_outputs {
-        out.push(Fr::random(&mut r));
+        out.push(T::random(&mut r));
     }
-
-    FrVec(out)
+    FVec(out)
 }
 
 /// Instead of long vectors in most VOLE protocols, we're just doing a "vector" commitment to two values,
@@ -82,15 +70,17 @@ pub fn reconstruct_commitment(
 
 #[cfg(test)]
 mod test {
+    use crate::Fr;
+
     use super::*;
     
     #[test]
     fn test_seed_expansion_len() {
         let seed = [0u8; 32];
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 1).0.len(), 1);
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 2).0.len(), 2);
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 4).0.len(), 4);
-        assert_eq!(super::expand_seed_to_Fr_vec(seed.clone(), 1000).0.len(), 1000);
+        assert_eq!(super::expand_seed_to_field_vec::<Fr>(seed.clone(), 1).0.len(), 1);
+        assert_eq!(super::expand_seed_to_field_vec::<Fr>(seed.clone(), 2).0.len(), 2);
+        assert_eq!(super::expand_seed_to_field_vec::<Fr>(seed.clone(), 4).0.len(), 4);
+        assert_eq!(super::expand_seed_to_field_vec::<Fr>(seed.clone(), 1000).0.len(), 1000);
     }
 
     #[test]

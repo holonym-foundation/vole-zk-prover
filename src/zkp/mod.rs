@@ -1,28 +1,28 @@
 use std::ops::Mul;
 use blake3::hash;
 use serde::{Serialize, Deserialize};
-use crate::{FrMatrix, Fr, FrVec, NUM_VOLES, SparseVec, SparseFrMatrix};
+use crate::{FMatrix, FVec, NUM_VOLES, SparseVec, SparseFMatrix, PF};
 #[derive(Clone, Serialize, Deserialize)]
-pub struct FullR1CS {
-    pub a_rows: FrMatrix,
-    pub b_rows: FrMatrix,
-    pub c_rows: FrMatrix,
+pub struct FullR1CS<T: PF> {
+    pub a_rows: FMatrix<T>,
+    pub b_rows: FMatrix<T>,
+    pub c_rows: FMatrix<T>,
 }
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SparseR1CS {
-    pub a_rows: SparseFrMatrix,
-    pub b_rows: SparseFrMatrix,
-    pub c_rows: SparseFrMatrix
+pub struct SparseR1CS<T: PF> {
+    pub a_rows: SparseFMatrix<T>,
+    pub b_rows: SparseFMatrix<T>,
+    pub c_rows: SparseFMatrix<T>
 }
 #[derive(Clone, Serialize, Deserialize)]
-pub enum R1CS {
-    Sparse(SparseR1CS),
-    Full(FullR1CS)
+pub enum R1CS<T: PF> {
+    Sparse(SparseR1CS<T>),
+    Full(FullR1CS<T>)
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct R1CSWithMetadata {
-    pub r1cs: R1CS,
+pub struct R1CSWithMetadata<T: PF> {
+    pub r1cs: R1CS<T>,
     pub public_inputs_indices: Vec<usize>,
     pub public_outputs_indices: Vec<usize>,
     pub unpadded_wtns_len: usize
@@ -36,9 +36,9 @@ pub struct PadParams {
     /// When a matrix is formed via chunking the padded witness, this value represents how many rows it has
     pub num_padded_wtns_rows: usize
 }
-impl R1CS {
+impl<T: PF> R1CS<T> {
     /// Returns Av, Bv, Cv for a vector v
-    fn vec_mul(&self, v: &FrVec) -> (FrVec, FrVec, FrVec) {
+    fn vec_mul(&self, v: &FVec<T>) -> (FVec<T>, FVec<T>, FVec<T>) {
         match self {
             Self::Sparse(s) => {
                 (v * &s.a_rows, v * &s.b_rows, v * &s.c_rows)
@@ -50,7 +50,7 @@ impl R1CS {
     }
 
     /// Checks whether it is satisfiable by the witness
-    fn witness_check(&self, witness: &FrVec) -> bool {
+    fn witness_check(&self, witness: &FVec<T>) -> bool {
         let (wA, wB, wC) = self.vec_mul(witness);
         &wA * &wB == wC
     }
@@ -72,7 +72,7 @@ impl R1CS {
     }
 }
 
-impl R1CSWithMetadata {
+impl<T: PF> R1CSWithMetadata<T> {
     /// Given self and number of desired columns i.e. linear code `k`, returns the amount of padding required
     pub fn calc_padding_needed(&self, k: usize) -> PadParams {
         // Pad witness so its length is a product of NUM_VOLES
@@ -90,11 +90,11 @@ impl R1CSWithMetadata {
             num_padded_wtns_rows,
         }
     }
-    pub fn circuit_id(&self) -> Result<[u8; 32], anyhow::Error> {
-        let serialized = bincode::serialize(&self)?;
-        let hashed = blake3::hash(&serialized);
-        Ok(*hashed.as_bytes())
-    }
+    // pub fn circuit_id(&self) -> Result<[u8; 32], anyhow::Error> {
+    //     let serialized = bincode::serialize(&self)?;
+    //     let hashed = blake3::hash(&serialized);
+    //     Ok(*hashed.as_bytes())
+    // }
 }
 pub mod quicksilver {
     use itertools::Itertools;
@@ -103,30 +103,30 @@ pub mod quicksilver {
     use anyhow::{Error, anyhow, bail, Ok};
     use ff::{Field, PrimeField};
 
-    use crate::{FrVec, Fr, FrMatrix, DotProduct, ScalarMul, actors::actors::PublicOpenings};
+    use crate::{FVec, FMatrix, DotProduct, actors::actors::PublicOpenings, PF};
 
     use super::{R1CS, R1CSWithMetadata};
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct ZKP {
+    pub struct ZKP<T: PF> {
         /// Quicksilver multiplication proof of two field elements
-        pub mul_proof: (Fr, Fr),
+        pub mul_proof: (T, T),
         // Public inputs and outputs should not be checked in the Quicksilver; they should be opened after conveting VitH to subspace VOLE, before VitH ∆ is chosen 
         // It may be possible to securely reveal public inputs after ∆ is known, but why worry about it if we can reveal public inputs before cheating is as big a concern?
         // /// Opening (u, v) of public input wires
-        // pub public_input_openings: Vec<(Fr, Fr)>,
+        // pub public_input_openings: Vec<(T, T)>,
         // /// Opening (u, v) of public output wires
-        // pub public_output_openings: Vec<(Fr, Fr)>
+        // pub public_output_openings: Vec<(T, T)>
     }
-    pub struct Prover {
-        pub u: FrVec,
-        pub v: FrVec,
-        pub r1cs_with_metadata: R1CSWithMetadata
+    pub struct Prover<T: PF> {
+        pub u: FVec<T>,
+        pub v: FVec<T>,
+        pub r1cs_with_metadata: R1CSWithMetadata<T>
     }
-    impl Prover {
-        /// Creates a prover from VitH U1 and R matrices of equal dimension with 2l+2 rows where the witness is split into l chunks of length vole_length
+    impl<T: PF> Prover<T> {
+        /// Creates a prover Tom VitH U1 and R matrices of equal dimension with 2l+2 rows where the witness is split into l chunks of length vole_length
         /// Takes ownership and mutates most of its inputs to something useless
-        pub fn from_vith(u1_rows: FrMatrix, mut r_rows: FrMatrix, mut witness_rows: FrMatrix, r1cswm: R1CSWithMetadata) -> Prover {
+        pub fn from_vith(u1_rows: FMatrix<T>, mut r_rows: FMatrix<T>, mut witness_rows: FMatrix<T>, r1cswm: R1CSWithMetadata<T>) -> Self {
             // println!("VOLE dimensions: {:?}", (u1_rows.0.len(), u1_rows.0[0].0.len()));
             // println!("R1CS dimensions: {:?}", (r1cs.a_rows.0.len(), r1cs.a_rows.0[0].0.len()));
             assert!((u1_rows.0.len() == r_rows.0.len()) && (u1_rows.0[0].0.len() == r_rows.0[0].0.len()), "u and v must be same dimension");
@@ -141,7 +141,7 @@ pub mod quicksilver {
             // Append the final u1_row which wasn't included by iterating through the witness rows:
             u.append(&mut u1_rows.0.last().unwrap().0.clone());
             r_rows.0.iter_mut().for_each(|row| v.append(&mut row.0));
-            Self { u: FrVec(u), v: FrVec(v), r1cs_with_metadata: r1cswm }
+            Self { u: FVec(u), v: FVec(v), r1cs_with_metadata: r1cswm }
         }
         /// TODO: explore efficiency gains for polynomial Quicksilver rather than gate-by-gate Quicksilver
         /// 
@@ -153,7 +153,7 @@ pub mod quicksilver {
         /// the prover can find a 'collision'. This is as simple as changing the witnesss
         /// so u is different but still produces the same Quicksilver check value. Note this would not affect the underlying subspace VOLE if used with VitH since a different witness would still
         /// lay in the correct subspace. Therefore, it's important `challenge` depends on the witness.
-        pub fn prove(&self, challenge: &Fr) -> ZKP {
+        pub fn prove(&self, challenge: &T) -> ZKP<T> {
             let l = self.u.0.len();
             let r1cs = &self.r1cs_with_metadata.r1cs;
             // let mut start = Instant::now();
@@ -166,7 +166,7 @@ pub mod quicksilver {
             let new_u = &(&u_b * &v_a + &u_a * &v_b) - &v_c;
             let new_v = &v_a * &v_b;
             // println!("QuickSilver Transformation {}", start.elapsed().as_micros()); start = Instant::now();
-            let challenge_vec = get_challenge_vec(challenge, l);
+            let challenge_vec = get_challenge_vec::<T>(challenge, l);
             // println!("QuickSilver Challenge {}", start.elapsed().as_micros()); start = Instant::now();
             let mul_proof = (new_u.dot(&challenge_vec), new_v.dot(&challenge_vec));
             // println!("QuickSilver Multiplciation proof {}", start.elapsed().as_micros()); start = Instant::now();
@@ -176,7 +176,7 @@ pub mod quicksilver {
 
         }
         /// Opens VOLE correlations at public indices
-        pub fn open_public(&self, indices: &Vec<usize>) -> Vec<(Fr, Fr)>{
+        pub fn open_public(&self, indices: &Vec<usize>) -> Vec<(T, T)>{
             indices.iter().map(|i|{
                 ( self.u.0[*i], self.v.0[*i] )
             }).collect()
@@ -184,29 +184,29 @@ pub mod quicksilver {
      }
 
     /// Creates a vector [challenge, challenge^2, challenge^3, ..., challenge^length]
-    fn get_challenge_vec(challenge: &Fr, length: usize) -> FrVec {
+    fn get_challenge_vec<T: PF>(challenge: &T, length: usize) -> FVec<T> {
         let mut challenge_vec = Vec::with_capacity(length);
             challenge_vec.push(challenge.clone());
             for i in 1..length {
                 // TODO: posisble very slight performance gain by cacheing i-1
                 challenge_vec.push(challenge_vec[i-1] * challenge);
             }
-        FrVec(challenge_vec)
+        FVec::<T>(challenge_vec)
     }
-    pub struct Verifier {
-        pub delta: Fr,
-        pub q: FrVec,
-        pub r1cs_with_metadata: R1CSWithMetadata
+    pub struct Verifier<T: PF> {
+        pub delta: T,
+        pub q: FVec<T>,
+        pub r1cs_with_metadata: R1CSWithMetadata<T>
     }
-    impl Verifier {
-        /// Creates a verifier from VitH S and D matrices where D is the prover's commitment to the witness
+    impl<T: PF> Verifier<T> {
+        /// Creates a verifier Tom VitH S and D matrices where D is the prover's commitment to the witness
         /// Takes ownership and mutates most of its inputs to something useless
-        pub fn from_vith(s_rows: &FrMatrix, delta: Fr, witness_comm: &FrMatrix, r1cswm: R1CSWithMetadata) -> Verifier {
+        pub fn from_vith(s_rows: &FMatrix<T>, delta: T, witness_comm: &FMatrix<T>, r1cswm: R1CSWithMetadata<T>) -> Self {
             // Adjust S by adding the witness to its first part
-            let mut s_adjustment = witness_comm.scalar_mul(&delta);
+            let mut s_adjustment = witness_comm.scalar_mul(delta);
             let row_len = s_adjustment.0[0].0.len();
             // Performance note: this pushes one beyond capacity
-            s_adjustment.0.push(FrVec(vec![Fr::ZERO; row_len]));
+            s_adjustment.0.push(FVec::<T>(vec![T::ZERO; row_len]));
 
             let mut s_adjusted = s_rows + &s_adjustment;
             
@@ -214,18 +214,18 @@ pub mod quicksilver {
             let vith_size = s_adjusted.0.len() * s_adjusted.0[0].0.len();
             let mut q = Vec::with_capacity(vith_size);
             s_adjusted.0.iter_mut().for_each(|row| q.append(&mut row.0));
-            let q = FrVec(q);
+            let q = FVec::<T>(q);
             Self { delta, q, r1cs_with_metadata: r1cswm }
         }
 
         /// Verifies a (degree 2) Quicksilver proof, returning the public inputs and outputs if successfull. Otherwise, returns an error
         /// NOTE: According to the Quicksilver paper, `challenge` should be given after the values are determined.
-        pub fn verify(&self, challenge: &Fr, proof: &ZKP) -> Result<(), Error>{
+        pub fn verify(&self, challenge: &T, proof: &ZKP<T>) -> Result<(), Error>{
             let r1cs = &self.r1cs_with_metadata.r1cs;
             let (q_a, q_b, q_c) = r1cs.vec_mul(&self.q);
 
             // Quicksilver protocol to transform VOLE into a new VOLE that makes multiplcation gates linear relations
-            let new_q = &(&q_a * &q_b) - &q_c.scalar_mul(&self.delta);
+            let new_q = &(&q_a * &q_b) - &q_c.scalar_mul(self.delta);
             let challenge_vec = get_challenge_vec(challenge, self.q.0.len());
             let success = proof.mul_proof.1 + proof.mul_proof.0 * self.delta == new_q.dot(&challenge_vec);
             match success {
@@ -234,7 +234,7 @@ pub mod quicksilver {
             }
         }
         /// Assuming the VOLE was constructed properly, this verifies the opening of witness VOLE correlations
-        pub fn verify_public(&self, pos: &PublicOpenings) -> Result<(), Error> {
+        pub fn verify_public(&self, pos: &PublicOpenings<T>) -> Result<(), Error> {
             if (!pos.public_inputs.len() == self.r1cs_with_metadata.public_inputs_indices.len()) && ((!pos.public_inputs.len() == self.r1cs_with_metadata.public_inputs_indices.len())) {
                 bail!("Public values have the wrong input or output length(s)")
             }
@@ -259,31 +259,31 @@ pub mod test {
     use ff::{Field, PrimeField};
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
-    use crate::{FrVec, Fr, ScalarMul, zkp::quicksilver::Verifier};
+    use crate::{FVec, Fr, zkp::quicksilver::Verifier};
     use super::{*, quicksilver::Prover};
 
     lazy_static! {
-        pub static ref TEST_R1CS: FullR1CS = {
+        pub static ref TEST_R1CS: FullR1CS<Fr> = {
             let a_rows = vec![
-                FrVec(vec![1, 1, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
-                FrVec(vec![2, 0, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
+                FVec(vec![1, 1, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
+                FVec(vec![2, 0, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
             ];
             let b_rows = vec![
-                FrVec(vec![0, 2, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
-                FrVec(vec![0, 0, 1, 0].iter().map(|x|Fr::from_u128(*x)).collect())
+                FVec(vec![0, 2, 0, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
+                FVec(vec![0, 0, 1, 0].iter().map(|x|Fr::from_u128(*x)).collect())
             ];
             let c_rows = vec![
-                FrVec(vec![0, 0, 1, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
-                FrVec(vec![0, 0, 0, 1].iter().map(|x|Fr::from_u128(*x)).collect())
+                FVec(vec![0, 0, 1, 0].iter().map(|x|Fr::from_u128(*x)).collect()),
+                FVec(vec![0, 0, 0, 1].iter().map(|x|Fr::from_u128(*x)).collect())
             ];
 
             FullR1CS {
-                a_rows: FrMatrix(a_rows),
-                b_rows: FrMatrix(b_rows),
-                c_rows: FrMatrix(c_rows),
+                a_rows: FMatrix(a_rows),
+                b_rows: FMatrix(b_rows),
+                c_rows: FMatrix(c_rows),
             }
         };
-        pub static ref TEST_R1CS_WITH_METADA: R1CSWithMetadata = R1CSWithMetadata { 
+        pub static ref TEST_R1CS_WITH_METADA: R1CSWithMetadata<Fr> = R1CSWithMetadata { 
             r1cs: R1CS::Full(TEST_R1CS.clone()), 
             public_inputs_indices: vec![0,2], 
             public_outputs_indices: vec![3],
@@ -292,20 +292,20 @@ pub mod test {
     }
     #[test]
     fn circuit_satisfiability() {
-        let witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
+        let witness = FVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect::<Vec<Fr>>());
         assert!(TEST_R1CS_WITH_METADA.r1cs.witness_check(&witness));
-        assert!(!TEST_R1CS_WITH_METADA.r1cs.witness_check(&FrVec(vec![Fr::ONE, Fr::ZERO, Fr::ZERO, Fr::ONE])));
+        assert!(!TEST_R1CS_WITH_METADA.r1cs.witness_check(&FVec(vec![Fr::ONE, Fr::ZERO, Fr::ZERO, Fr::ONE])));
     }
 
     #[test]
     pub fn circuit_satisfiability_proof() {
-        let witness = FrVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
+        let witness = FVec(vec![5, 2, 28, 280].iter().map(|x|Fr::from_u128(*x)).collect());
 
         // Prove it in ZK this time:
         let delta = Fr::random(&mut ThreadRng::default());
-        let v = FrVec::random(witness.0.len());
+        let v = FVec::<Fr>::random(witness.0.len());
         let u = witness.clone();
-        let q = &u.scalar_mul(&delta) + &v;
+        let q = &u.scalar_mul(delta) + &v;
         
         let prover = Prover {
             u,
@@ -327,7 +327,7 @@ pub mod test {
 
     // /// This is covered by practiaclly every single integration tests so commenting it instead of implementing it
     // #[test]
-    // pub fn from_vith() {
+    // pub fn Tom_vith() {
     //     todo!()
     // }
 }

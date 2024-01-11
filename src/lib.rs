@@ -34,9 +34,14 @@ const NUM_VOLES: u32 = 1024;
 #[PrimeFieldReprEndianness = "big"]
 pub struct Fr([u64; 4]);
 
+/// Alias for types suitable for the prime field element
+pub trait PF: PrimeField + Add + Sub + Mul + FromU8s + ToU8s {}
+impl<T: PrimeField + Add + Sub + Mul + FromU8s + ToU8s> PF for T {}
+
+/// A vector of field elements
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FrVec(pub Vec<Fr>);
-// pub struct FrVec<T: PrimeField>(pub Vec<T>);
+pub struct FVec<T: PF>(pub Vec<T>);
+// pub struct FVec<T><T: PrimeField>(pub Vec<T>);
 
 // pub trait Field {
 //     fn fast_secure_rand(&mut rng: ) {}
@@ -46,8 +51,49 @@ pub struct FrVec(pub Vec<Fr>);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SparseVec<T: Mul + Add>(pub Vec<(usize, T)>);
 
+pub trait FromU8s {
+    fn from_u8s(u: &Vec<u8>) -> Self;
+}
+pub trait ToU8s {
+    fn to_u8s(&self) -> Vec<u8>;
+}
+impl FromU8s for Fr {
+    fn from_u8s(u: &Vec<u8>) -> Self {
+        if u.len() != 32 { panic!("field element bust must be 32-byte") }
+        Fr::from_repr(FrRepr(u[0..32].try_into().unwrap())).unwrap()
+    }
+}
+impl ToU8s for Fr {
+    fn to_u8s(&self) -> Vec<u8> {
+        self.to_repr().0.try_into().unwrap()
+    }
+}
+// impl FromBytes for Fr {
+//     type Bytes = [u8; 32];
+//     fn from_be_bytes(bytes: &Self::Bytes) -> Self {
+//         Fr::from_repr(FrRepr(bytes.clone())).unwrap()
+//     }
+//     fn from_le_bytes(bytes: &Self::Bytes) -> Self {
+//         let mut b = bytes.clone();
+//         b.reverse();
+//         Fr::from_repr(FrRepr(b)).unwrap()
+//     }
+// }
+// impl ToBytes for Fr {
+//     type Bytes = [u8; 32];
+//     fn to_be_bytes(&self) -> Self::Bytes {
+//         self.to_repr().0
+//     }
+//     fn to_le_bytes(&self) -> Self::Bytes {
+//         let mut b = self.to_repr().0;
+//         b.reverse();
+//         b
+//     }
+// }
+
+
 /// Pretty display
-impl Display for FrVec {
+impl Display for FVec<Fr> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[ {} ]", self.0.iter().map(|fr|{
                 let repr = fr.to_repr().0;
@@ -57,7 +103,7 @@ impl Display for FrVec {
     }
 }
 /// Pretty display
-impl Display for FrMatrix {
+impl Display for FMatrix<Fr> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = self.0.iter().map(|fv|fv.to_string()).collect::<Vec<String>>();
         write!(f, "Matrix in row major order:\n[\n\t{}\n]", s.join("\n\t"))
@@ -66,117 +112,102 @@ impl Display for FrMatrix {
 
 // TODO: clean up this ridiculous math trait derivation :p
 
-impl<'a, 'b> Mul<&'b FrVec> for &'a FrVec {
-    type Output = FrVec;
-    fn mul(self, rhs: &'b FrVec) -> FrVec {
-        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).collect())
+impl<'a, 'b, T: PF> Mul<&'b FVec<T>> for &'a FVec<T> {
+    type Output = FVec<T>;
+    fn mul(self, rhs: &'b FVec<T>) -> FVec<T> {
+        FVec::<T>(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).collect())
     }
 }
-impl Add for FrVec {
+impl<T: PF> Add for FVec<T> {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
         Self(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
     }
 }
-impl<'a, 'b> Add<&'b FrVec> for &'a FrVec {
-    type Output = FrVec;
-    fn add(self, rhs: &'b FrVec) -> FrVec {
-        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
+impl<'a, 'b, T: PF> Add<&'b FVec<T>> for &'a FVec<T> {
+    type Output = FVec<T>;
+    fn add(self, rhs: &'b FVec<T>) -> FVec<T> {
+        FVec::<T>(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a + *b).collect())
     }
 }
 
-impl<'a, 'b> Sub<&'b FrVec> for &'a FrVec {
-    type Output =  FrVec;
-    fn sub(self, rhs: &'b FrVec) -> FrVec {
-        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
+impl<'a, 'b, T: PF> Sub<&'b FVec<T>> for &'a FVec<T> {
+    type Output =  FVec<T>;
+    fn sub(self, rhs: &'b FVec<T>) -> FVec<T> {
+        FVec::<T>(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
     }
 }
-impl<'a> SubAssign<FrVec> for &'a mut FrVec{
-    fn sub_assign(&mut self, rhs: FrVec) {
+impl<'a, T: PF> SubAssign<FVec<T>> for &'a mut FVec<T>{
+    fn sub_assign(&mut self, rhs: FVec<T>) {
         self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
     }
 }
 
-impl<'a, 'b> Sub<&'b FrVec> for &'a mut FrVec {
-    type Output =  FrVec;
-    fn sub(self, rhs: &'b FrVec) -> FrVec {
-        FrVec(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
+impl<'a, 'b, T: PF> Sub<&'b FVec<T>> for &'a mut FVec<T> {
+    type Output =  FVec<T>;
+    fn sub(self, rhs: &'b FVec<T>) -> FVec<T> {
+        FVec::<T>(self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a - *b).collect())
     }
 }
 
-impl<'a, 'b> SubAssign<&'b mut FrVec> for FrVec {
-    fn sub_assign(&mut self, rhs: &'b mut FrVec) {
-        // *self = FrVec(vec![Fr::ONE]);
+impl<'a, 'b, T: PF> SubAssign<&'b mut FVec<T>> for FVec<T> {
+    fn sub_assign(&mut self, rhs: &'b mut FVec<T>) {
+        // *self = FVec<T>(vec![Fr::ONE]);
         self.0.iter_mut().zip(rhs.0.iter()).for_each(|(a, b)| *a -= *b);
     }
 }
 
-impl<'a> Neg for &'a FrVec {
-    type Output = FrVec;
-    fn neg(self) -> FrVec {
-        FrVec(self.0.iter().map(|a| -*a).collect())
+impl<'a, T: PF> Neg for &'a FVec<T> {
+    type Output = FVec<T>;
+    fn neg(self) -> FVec<T> {
+        FVec::<T>(self.0.iter().map(|a| -*a).collect())
     }
 }
 
-pub trait DotProduct {
+pub trait DotProduct<T: PF> {
     type Inner;
     fn dot(&self, rhs: &Self) -> Self::Inner;
-    fn sparse_dot(&self, rhs: &SparseVec<Fr>) -> Self::Inner;
+    fn sparse_dot(&self, rhs: &SparseVec<T>) -> Self::Inner;
 }
-impl DotProduct for FrVec {
-    type Inner = Fr;
+impl<T: PF> DotProduct<T> for FVec<T> {
+    type Inner = T;
     fn dot(&self, rhs: &Self) -> Self::Inner {
-        self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).sum::<Fr>()
+        self.0.iter().zip(rhs.0.iter()).map(|(a, b)| *a * *b).sum::<T>()
     }
     // TODO: see whether this can be optimized
-    fn sparse_dot(&self, rhs: &SparseVec<Fr>) -> Self::Inner {
-        rhs.0.iter().fold(Fr::ZERO, |acc, (idx, val)|{
+    fn sparse_dot(&self, rhs: &SparseVec<T>) -> Self::Inner {
+        rhs.0.iter().fold(T::ZERO, |acc, (idx, val)|{
             acc + &(self.0[*idx] * val)
         })
     }
 }
 
-pub trait ScalarMul<T> {
-    fn scalar_mul(&self, rhs: T) -> Self;
-}
-
-impl<'b> ScalarMul<&'b Fr> for FrMatrix {
-    fn scalar_mul(&self, rhs: &'b Fr) -> Self {
-        Self(
-            self.0.iter().map(|x|x.scalar_mul(rhs)).collect()
-        )
-    }
-}
-
-impl<'b> ScalarMul<&'b Fr> for FrVec {
-    fn scalar_mul(&self, rhs: &'b Fr) -> Self {
-        Self(self.0.iter().map(|a| *a * *rhs).collect())
-    }
-}
-
-impl PartialEq for FrVec {
+impl<T: PF> PartialEq for FVec<T> {
     fn eq(&self, rhs: &Self) -> bool {
         self.0.iter().zip(rhs.0.iter()).all(|(a, b)| a == b)
     }
 }
 
 
-impl FrVec {
+impl<T: PF> FVec<T> {
+    fn scalar_mul(&self, rhs: T) -> Self {
+        Self(self.0.iter().map(|a| *a * rhs).collect())
+    }
     /// Appends `len` zeroes
     pub fn zero_pad(&mut self, len: usize) {
-        self.0.append(&mut vec![Fr::ZERO; len]);
+        self.0.append(&mut vec![T::ZERO; len]);
     }
     pub fn random(len: usize) -> Self {
         let mut r = &mut ThreadRng::default();
         Self(
-            (0..len).map(|_|Fr::random(&mut r)).collect()
+            (0..len).map(|_|T::random(&mut r)).collect()
         )
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FrMatrix(pub Vec<FrVec>);
-impl FrMatrix {
+pub struct FMatrix<T: PF>(pub Vec<FVec<T>>);
+impl<T: PF> FMatrix<T> {
     pub fn transpose(&self) -> Self {
         let outer_len = self.0.len();
         let inner_len  = self.0[0].0.len();
@@ -186,20 +217,27 @@ impl FrMatrix {
             for j in 0..outer_len {
                 new.push(self.0[j].0[i]);
             }
-            res.push(FrVec(new));
+            res.push(FVec::<T>(new));
         }
         Self(res)
     }
+
+    fn scalar_mul(&self, rhs: T) -> Self {
+        Self(
+            self.0.iter().map(|x|x.scalar_mul(rhs)).collect()
+        )
+    }
+
     pub fn dim(&self) -> (usize, usize) {
         (self.0[0].0.len(), self.0.len())
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SparseFrMatrix(pub Vec<SparseVec<Fr>>);
+pub struct SparseFMatrix<T: PF>(pub Vec<SparseVec<T>>);
 
 
-// impl MulAssign<ElementaryColumnOp> for FrMatrix {
+// impl MulAssign<ElementaryColumnOp> for FMatrix {
 //     fn mul_assign(&mut self, rhs: ElementaryColumnOp) {
 //         match rhs {
 //             ElementaryColumnOp::Swap(i, j) => {
@@ -215,7 +253,7 @@ pub struct SparseFrMatrix(pub Vec<SparseVec<Fr>>);
 //     }
 // }
 
-// impl MulAssign<ElementaryColumnOpComposition> for FrMatrix {
+// impl MulAssign<ElementaryColumnOpComposition> for FMatrix {
 //     fn mul_assign(&mut self, rhs: ElementaryColumnOpComposition) {
 //         for op in rhs.0 {
 //             self.mul_assign(op);
@@ -223,43 +261,43 @@ pub struct SparseFrMatrix(pub Vec<SparseVec<Fr>>);
 //     }
 // }
 
-impl<'a, 'b> Add<&'b FrMatrix> for &'a FrMatrix {
-    type Output = FrMatrix;
-    fn add(self, rhs: &'b FrMatrix) -> FrMatrix {
-        FrMatrix(
+impl<'a, 'b, T: PF> Add<&'b FMatrix<T>> for &'a FMatrix<T> {
+    type Output = FMatrix<T>;
+    fn add(self, rhs: &'b FMatrix<T>) -> FMatrix<T> {
+        FMatrix(
             self.0.iter().zip(rhs.0.iter()).map(|(a, b)| a + b).collect()
         )
     }
 }
 
-impl<'a, 'b> Sub<&'b FrMatrix> for &'a FrMatrix {
-    type Output = FrMatrix;
-    fn sub(self, rhs: &'b FrMatrix) -> FrMatrix {
-        FrMatrix(
+impl<'a, 'b, T: PF> Sub<&'b FMatrix<T>> for &'a FMatrix<T> {
+    type Output = FMatrix<T>;
+    fn sub(self, rhs: &'b FMatrix<T>) -> FMatrix<T> {
+        FMatrix::<T>(
             self.0.iter().zip(rhs.0.iter()).map(|(a, b)| a - b).collect()
         )
     }
 }
 
-impl<'a, 'b> Mul<&'b FrMatrix> for &'a FrVec {
-    type Output = FrVec;
-    fn mul(self, rhs: &'b FrMatrix) -> FrVec {
-        FrVec(
+impl<'a, 'b, T: PF> Mul<&'b FMatrix<T>> for &'a FVec<T> {
+    type Output = FVec<T>;
+    fn mul(self, rhs: &'b FMatrix<T>) -> FVec<T> {
+        FVec::<T>(
             rhs.0.iter().map(|row_or_col| self.dot(row_or_col)).collect()
         )
     }
 }
 
-impl<'a, 'b> Mul<&'b SparseFrMatrix> for &'a FrVec {
-    type Output = FrVec;
-    fn mul(self, rhs: &'b SparseFrMatrix) -> FrVec {
-        FrVec(
+impl<'a, 'b, T: PF> Mul<&'b SparseFMatrix<T>> for &'a FVec<T> {
+    type Output = FVec<T>;
+    fn mul(self, rhs: &'b SparseFMatrix<T>) -> FVec<T> {
+        FVec::<T>(
             rhs.0.iter().map(|row_or_col| self.sparse_dot(row_or_col)).collect()
         )
     }
 }
 
-impl PartialEq for FrMatrix {
+impl<T: PF> PartialEq for FMatrix<T> {
     fn eq(&self, rhs: &Self) -> bool {
         self.0.iter().zip(rhs.0.iter()).all(|(a, b)| a == b)
     }
@@ -272,15 +310,15 @@ mod test {
 
     #[test]
     fn test_transpose() {
-        let x = FrMatrix(vec![
-            FrVec(vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)]),
-            FrVec(vec![Fr::from(4u64), Fr::from(5u64), Fr::from(6u64)]),
-            FrVec(vec![Fr::from(7u64), Fr::from(8u64), Fr::from(9u64)]),
+        let x = FMatrix(vec![
+            FVec(vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)]),
+            FVec(vec![Fr::from(4u64), Fr::from(5u64), Fr::from(6u64)]),
+            FVec(vec![Fr::from(7u64), Fr::from(8u64), Fr::from(9u64)]),
         ]);
-        let x_t = FrMatrix(vec![
-            FrVec(vec![Fr::from(1u64), Fr::from(4u64), Fr::from(7u64)]),
-            FrVec(vec![Fr::from(2u64), Fr::from(5u64), Fr::from(8u64)]),
-            FrVec(vec![Fr::from(3u64), Fr::from(6u64), Fr::from(9u64)]),
+        let x_t = FMatrix(vec![
+            FVec(vec![Fr::from(1u64), Fr::from(4u64), Fr::from(7u64)]),
+            FVec(vec![Fr::from(2u64), Fr::from(5u64), Fr::from(8u64)]),
+            FVec(vec![Fr::from(3u64), Fr::from(6u64), Fr::from(9u64)]),
         ]);
         assert_eq!(x.transpose(), x_t);
     }
@@ -288,7 +326,7 @@ mod test {
     // Could cover more edge cases
     #[test]
     fn test_sparse_vec() {
-        let a = FrVec(vec![Fr::ZERO, Fr::ZERO, Fr::ZERO, Fr::from_u128(69)]);
+        let a = FVec(vec![Fr::ZERO, Fr::ZERO, Fr::ZERO, Fr::from_u128(69)]);
         let b = SparseVec(vec![(3, Fr::from_u128(100)), (2, Fr::from_u128(5))]);
         assert!(a.sparse_dot(&b) == Fr::from_u128(6900));
     }
