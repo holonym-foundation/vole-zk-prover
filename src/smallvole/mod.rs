@@ -23,9 +23,11 @@ pub struct VOLE<T: PF> {
 impl<T: PF> VOLE<T> {
     /// Generate uniformly random (not sure that's necessary but it's nice) delta choices in a small subset
     pub fn init() -> Self {
-        let mut digest = *blake3::hash("Silk ∆ choices".as_bytes()).as_bytes();
-        let mut rng = ChaCha12Rng::from_seed(digest);
-        let f1 = T::random(&mut rng); let f2 = T::random(&mut rng);
+        let digest1 = *blake3::hash("Silk ∆ choice 1".as_bytes()).as_bytes();
+        let digest2 = *blake3::hash("Silk ∆ choice 2".as_bytes()).as_bytes();
+        let mut rng1 = ChaCha12Rng::from_seed(digest1);
+        let mut rng2 = ChaCha20Rng::from_seed(digest2);
+        let f1 = T::random(&mut rng1); let f2 = T::random(&mut rng2);
         let _x = match f1 != f2{
             true => true,
             false => panic!("f1 and f2 should not be same"),
