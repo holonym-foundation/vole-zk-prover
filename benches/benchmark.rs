@@ -11,20 +11,40 @@ use std::{fs::File, io::BufReader, str::FromStr};
 
 lazy_static! {
     pub static ref WITNESS: FVec<Fr> = {
-        let wtns_file = File::open("src/circom/examples/witness.wtns").unwrap();
-        let mut wtns_reader = BufReader::new(wtns_file);
-        wtns_from_reader(wtns_reader).unwrap()
+        let wtns_file_res = File::open("src/circom/examples/witness.wtns");
+        let wtns_file = match wtns_file_res {
+            Ok(file) => file,
+            Err(e) => panic!("Problem opening the file: {e:?}"),
+        };
+        let wtns_reader = BufReader::new(wtns_file);
+        match wtns_from_reader(wtns_reader){
+            Ok(wtns) => wtns,
+            Err(e) => panic!("Problem opening the reader: {e:?}"),
+        }
     };
     pub static ref CIRCUIT: R1CSWithMetadata<Fr> = {
-        let r1cs_file = File::open("src/circom/examples/test.r1cs").unwrap();
-        let mut r1cs_reader = BufReader::new(r1cs_file);
-        R1CSFile::from_reader(r1cs_reader).unwrap().to_crate_format()
+        let r1cs_file_res = File::open("src/circom/examples/test.r1cs");
+        let r1cs_file = match r1cs_file_res {
+            Ok(file) => file,
+            Err(e) => panic!("Problem opening the file: {e:?}"),
+        };
+        let r1cs_reader = BufReader::new(r1cs_file);
+        match R1CSFile::from_reader(r1cs_reader){
+            Ok(r1cs) => r1cs,
+            Err(e) => panic!("Problem opening the reader: {e:?}"),
+        }.to_crate_format()
     };
 }
 fn load_and_prove() {
     let mut prover = Prover::from_witness_and_circuit_unpadded(WITNESS.clone(), CIRCUIT.clone());
-    let vole_comm = prover.mkvole().unwrap();
-    let proof = prover.prove().unwrap();
+    let vole_comm = match prover.mkvole(){
+        Ok(comm) => comm,
+        Err(e) => panic!("Problem opening the commitment: {e:?}"),       
+    };
+    let proof = match prover.prove(){
+        Ok(proof) => proof,
+        Err(e) => panic!("Problem opening the proof: {e:?}"),
+    };
 }
 
 

@@ -382,7 +382,10 @@ pub mod test_helpers {
         let mut prover = Prover::from_witness_and_circuit_unpadded(witness.clone(), circuit.clone());
         // let vole_comm = prover.mkvole().unwrap();
         // let proof = prover.prove().unwrap();
-        let cnp = prover.commit_and_prove().unwrap();
+        let cnp = match prover.commit_and_prove(){
+            Ok(cp) => cp,
+            Err(error) => panic!("Problem computing commit and prove: {error:?}"),
+        };
         let verifier = Verifier::from_circuit(circuit);
         verifier.verify(&cnp)
     }

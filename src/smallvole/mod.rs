@@ -4,7 +4,7 @@ use blake3::Hasher;
 use ff::{PrimeField, Field};
 use lazy_static::lazy_static;
 use rand::{rngs::{ThreadRng}, SeedableRng, RngCore};
-use rand_chacha::ChaCha12Rng;
+use rand_chacha::{ChaCha12Rng,ChaCha20Rng};
 
 use crate::{vecccom::{expand_seed_to_field_vec}, FVec, PF};
 
@@ -26,7 +26,10 @@ impl<T: PF> VOLE<T> {
         let mut digest = *blake3::hash("Silk ∆ choices".as_bytes()).as_bytes();
         let mut rng = ChaCha12Rng::from_seed(digest);
         let f1 = T::random(&mut rng); let f2 = T::random(&mut rng);
-        debug_assert!(f1 != f2);
+        let _x = match f1 != f2{
+            true => true,
+            false => panic!("f1 and f2 should not be same"),
+        };
         Self { delta_choices: [f1, f2] }
     }
     /// Creates a small VOLE from two seeds and two Deltas

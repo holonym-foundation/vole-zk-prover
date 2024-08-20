@@ -81,7 +81,10 @@ pub fn calc_other_challenges<T: PF>(seed_comm: &[u8; 32], witness_comm: &FMatrix
     (0..num_voles).for_each(|_|delta_choices.push((prg.next_u32() % 2) as usize));
     
     let subspace_challenge = challenge_from_seed(&concatted, "subspace_vole_consistency".as_bytes(), vole_length);
-    assert!(vole_length % 2 == 0, "VOLE length must be a multiple of 2");
+    let _x = match vole_length % 2{
+        0 => true,
+        _ => panic!("VOLE length must be a multiple of 2"),
+    };
     let s_challenge = challenge_from_seed(&concatted, "s_matrix_consistency".as_bytes(), vole_length / 2);
     
     Challenges {

@@ -90,32 +90,54 @@ impl R1CSFile {
         let constraint_type = 2;
         let wire2label_type = 3;
 
-        reader.seek(SeekFrom::Start(*section_offsets.get(&header_type).unwrap()))?;
-        let header = read_header(&mut reader, *section_sizes.get(&header_type).unwrap())?;
+        reader.seek(SeekFrom::Start(
+            *match section_offsets.get(&header_type){
+                Some(x) => x,
+                None => panic!("Problem referencing"),
+            }))?;
+        let header = read_header(&mut reader, *match section_sizes.get(&header_type){
+            Some(x) => x,
+            None => panic!("Problem referencing"),
+        })?;
         if header.field_size != 32 {
             bail!("This parser only supports 32-byte fields");
         }
 
-        if header.prime_size != hex::decode("010000f093f5e1439170b97948e833285d588181b64550b829a031e1724e6430").unwrap() {
+        if header.prime_size != match hex::decode("010000f093f5e1439170b97948e833285d588181b64550b829a031e1724e6430"){
+            Ok(byte) => byte,
+            Err(e) => panic!("Problem decoding hex: {e:?}"),
+        } {
             bail!("This parser only supports bn254");
         }
 
         reader.seek(SeekFrom::Start(
-            *section_offsets.get(&constraint_type).unwrap(),
+            *match section_offsets.get(&constraint_type){
+                Some(x) => x,
+                None => panic!("Problem referencing"),
+            },
         ))?;
 
         let constraints = read_constraints(
             &mut reader,
-            *section_sizes.get(&constraint_type).unwrap(),
+            *match section_sizes.get(&constraint_type){
+                Some(x) => x,
+                None => panic!("Problem referencing"), 
+            },
             &header,
         );
 
         reader.seek(SeekFrom::Start(
-            *section_offsets.get(&wire2label_type).unwrap(),
+            *match section_offsets.get(&wire2label_type){
+                Some(x) => x,
+                None => panic!("Problem referencing"), 
+            },
         ))?;
         let wire_mapping = read_map(
             &mut reader,
-            *section_sizes.get(&wire2label_type).unwrap(),
+            *match section_sizes.get(&wire2label_type){
+                Some(x) => x,
+                None => panic!("Problem referencing"), 
+            },
             &header,
         )?;
 
@@ -197,18 +219,35 @@ mod test {
     use super::*;
     #[test]
     fn read_r1cs_file() {
-        let file = File::open("src/circom/examples/test.r1cs").unwrap();
-        let mut buf_reader = BufReader::new(file);
-        let r1cs = R1CSFile::from_reader(buf_reader).unwrap();
+        let r1cs_file_res: Result<File, std::io::Error> = File::open("src/circom/examples/test.r1cs");
+        let r1cs_file = match r1cs_file_res {
+            Ok(file) => file,
+            Err(e) => panic!("Problem opening the file: {e:?}"),
+        };
+        let buf_reader = BufReader::new(r1cs_file);
+        let r1cs = match R1CSFile::from_reader(buf_reader){
+            Ok(r1cs) => r1cs,
+            Err(e) => panic!("Problem opening the reader: {e:?}"),
+        };
     }
 
     #[test]
     fn correct_public_indices() {
-        let file = File::open("src/circom/examples/test.r1cs").unwrap();
-        let mut buf_reader = BufReader::new(file);
-        let r1cs = R1CSFile::from_reader(buf_reader).unwrap();
-        let r1cs = r1cs.to_crate_format();
-        assert!(r1cs.public_outputs_indices == (1..258).collect_vec());
-        assert!(r1cs.public_inputs_indices == (258..260).collect_vec());
+        let r1cs_file_res: Result<File, std::io::Error> = File::open("src/circom/examples/test.r1cs");
+        let r1cs_file = match r1cs_file_res {
+            Ok(file) => file,
+            Err(e) => panic!("Problem opening the file: {e:?}"),
+        };
+        let buf_reader = BufReader::new(r1cs_file);
+        let r1cs = match R1CSFile::from_reader(buf_reader){
+            Ok(r1cs) => r1cs,
+            Err(e) => panic!("Problem opening the reader: {e:?}"),
+        }.to_crate_format();
+        if r1cs.public_outputs_indices != (1..258).collect_vec(){
+            panic!("indices not correct")
+        };
+        if r1cs.public_inputs_indices != (258..260).collect_vec(){
+            panic!("indices not correct")
+        };
     }
 }
